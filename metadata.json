@@ -1,0 +1,7 @@
+{
+  "name": "Restaurant Grand Bassam Niamey",
+  "description": "Un site vitrine élégant pour le Restaurant Grand Bassam à Niamey, proposant une cuisine ivoirienne authentique avec réservation en ligne et menu interactif.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
