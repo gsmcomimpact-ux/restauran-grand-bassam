@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import Navbar from './components/Navbar';
 import MenuCard from './components/MenuCard';
 import ReservationForm from './components/ReservationForm';
-import { MENU_ITEMS as INITIAL_MENU, PHONE, LOCATION, RESTAURANT_NAME } from './constants';
+import { MENU_ITEMS as INITIAL_MENU, PHONE, LOCATION, RESTAURANT_NAME, SITE_URL } from './constants';
 import { Dish, OrderHistoryItem, Reservation } from './types';
 
 const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => (
-  <div className={`relative flex items-center justify-center ${className}`}>
+  <div className={`relative flex items-center justify-center ${className}`} aria-hidden="true">
     <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-lg">
       <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" strokeWidth="1" className="text-orange-600/20" />
       <path d="M30 70 Q50 20 70 70 M50 35 L50 70" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" className="text-orange-600" />
@@ -16,33 +17,60 @@ const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => 
   </div>
 );
 
-const QRCodeComponent: React.FC<{ className?: string }> = ({ className = "w-32 h-32" }) => (
-  <div className={`bg-white p-4 rounded-[2.5rem] shadow-2xl border border-white/10 flex flex-col items-center justify-center ${className}`}>
-    <svg viewBox="0 0 29 29" className="w-full h-full text-stone-900 mb-2" shapeRendering="crispEdges">
-      <path fill="currentColor" d="M0 0h7v7H0zM22 0h7v7h-7zM0 22h7v7H0zM2 2h3v3H2zM24 2h3v3h-3zM2 24h3v3H2zM9 0h1v1H9zM12 0h2v1h-2zM15 0h1v2h-1zM18 0h2v1h-2zM9 2h1v1H9zM12 2h1v1h-1zM15 2h1v1h-1zM18 2h1v2h-1zM11 3h1v1H1zM14 3h1v1h-1zM9 4h2v1H9zM13 4h2v1h-2zM18 4h2v1h-2zM10 5h1v1H1z" />
-    </svg>
-    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-orange-600">Scan Menu</span>
+const QRCodeImage: React.FC<{ size?: number, className?: string }> = ({ size = 150, className = "" }) => (
+  <div className={`bg-white p-2 rounded-xl shadow-sm inline-block border border-stone-100 ${className}`}>
+    <img 
+      src={`https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(SITE_URL)}`} 
+      alt="QR Code pour accéder au site"
+      width={size}
+      height={size}
+      className="block"
+    />
   </div>
 );
+
+type AdminTab = 'none' | 'dashboard' | 'orders' | 'reservations' | 'accounting' | 'menu_manager';
 
 const App: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<string>('tous');
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
   const [menuItems, setMenuItems] = useState<Dish[]>([]);
-  const [showAdminPortal, setShowAdminPortal] = useState<'none' | 'orders' | 'reservations' | 'accounting' | 'menu_manager'>('none');
+  const [showAdminPortal, setShowAdminPortal] = useState<AdminTab>('none');
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [orderFilter, setOrderFilter] = useState<'Tous' | 'Nouveau' | 'Payé'>('Tous');
   
+  // Menu Management State
+  const [showAddDishModal, setShowAddDishModal] = useState(false);
+  const [editingDish, setEditingDish] = useState<Dish | null>(null);
+  const [newDish, setNewDish] = useState<Partial<Dish>>({
+    name: '',
+    description: '',
+    price: 0,
+    category: 'plat',
+    image: ''
+  });
+
+  const [selectedInvoice, setSelectedInvoice] = useState<OrderHistoryItem | null>(null);
+  const [showMasterReport, setShowMasterReport] = useState(false);
+  const [reportRange, setReportRange] = useState({ 
+    start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0], 
+    end: new Date().toISOString().split('T')[0] 
+  });
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const localMenu = localStorage.getItem('grand_bassam_menu');
-    setMenuItems(localMenu ? JSON.parse(localMenu) : INITIAL_MENU);
-    if (sessionStorage.getItem('is_admin') === 'true') setIsAdminMode(true);
+    const items = localMenu ? JSON.parse(localMenu) : INITIAL_MENU;
+    setMenuItems(items);
+    if (sessionStorage.getItem('is_admin') === 'true') {
+      setIsAdminMode(true);
+    }
     refreshAdminData();
   }, []);
 
@@ -61,7 +89,7 @@ const App: React.FC = () => {
       setIsAdminMode(true);
       setShowLoginModal(false);
       sessionStorage.setItem('is_admin', 'true');
-      setShowAdminPortal('orders');
+      setShowAdminPortal('dashboard');
       refreshAdminData();
     } else {
       setLoginError('Identifiants incorrects');
@@ -74,7 +102,7 @@ const App: React.FC = () => {
     sessionStorage.removeItem('is_admin');
   };
 
-  // --- Admin Actions ---
+  // Order Management
   const updateOrderStatus = (id: string, status: 'Payé' | 'Nouveau') => {
     const updated = orders.map(o => o.id === id ? { ...o, status } : o);
     setOrders(updated);
@@ -89,6 +117,7 @@ const App: React.FC = () => {
     }
   };
 
+  // Reservation Management
   const updateReservationStatus = (id: string, status: Reservation['status']) => {
     const updated = reservations.map(r => r.id === id ? { ...r, status } : r);
     setReservations(updated);
@@ -103,332 +132,854 @@ const App: React.FC = () => {
     }
   };
 
-  const addDish = () => {
-    const newDish: Dish = {
-      id: `dish-${Date.now()}`,
-      name: 'Nouveau Plat',
-      description: 'Description...',
-      price: 0,
-      category: 'plat',
-      image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800'
-    };
-    const updated = [newDish, ...menuItems];
-    setMenuItems(updated);
-    localStorage.setItem('grand_bassam_menu', JSON.stringify(updated));
+  // Menu Management
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        if (isEdit && editingDish) {
+          setEditingDish({ ...editingDish, image: base64 });
+        } else {
+          setNewDish({ ...newDish, image: base64 });
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
-  const updateDish = (id: string, updates: Partial<Dish>) => {
-    const updated = menuItems.map(m => m.id === id ? { ...m, ...updates } : m);
-    setMenuItems(updated);
-    localStorage.setItem('grand_bassam_menu', JSON.stringify(updated));
+  const saveDish = (e: React.FormEvent) => {
+    e.preventDefault();
+    let updatedMenu: Dish[];
+    
+    if (editingDish) {
+      updatedMenu = menuItems.map(m => m.id === editingDish.id ? editingDish : m);
+      setEditingDish(null);
+    } else {
+      const dishToSave: Dish = {
+        ...newDish as Dish,
+        id: Date.now().toString(),
+      };
+      updatedMenu = [dishToSave, ...menuItems];
+      setNewDish({ name: '', description: '', price: 0, category: 'plat', image: '' });
+      setShowAddDishModal(false);
+    }
+    
+    setMenuItems(updatedMenu);
+    localStorage.setItem('grand_bassam_menu', JSON.stringify(updatedMenu));
   };
 
   const deleteDish = (id: string) => {
-    if (confirm("Supprimer ce plat ?")) {
+    if (confirm("Supprimer ce plat définitivement ?")) {
       const updated = menuItems.filter(m => m.id !== id);
       setMenuItems(updated);
       localStorage.setItem('grand_bassam_menu', JSON.stringify(updated));
     }
   };
 
-  // --- Computed Stats ---
-  const stats = useMemo(() => {
-    const total = orders.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
-    const paid = orders.filter(o => o.status === 'Payé').reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
-    return { total, paid, pending: total - paid };
-  }, [orders]);
+  const handlePrint = () => {
+    window.print();
+  };
 
-  const filteredOrders = useMemo(() => {
-    if (orderFilter === 'Tous') return orders;
-    return orders.filter(o => o.status === orderFilter);
-  }, [orders, orderFilter]);
+  // Stats & Reports
+  const filteredOrdersForReport = useMemo(() => {
+    return orders.filter(o => {
+      const orderDate = o.timestamp.split('T')[0];
+      return orderDate >= reportRange.start && orderDate <= reportRange.end;
+    });
+  }, [orders, reportRange]);
+
+  const stats = useMemo(() => {
+    const total = filteredOrdersForReport.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
+    const paid = filteredOrdersForReport.filter(o => o.status === 'Payé').reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
+    return { total, paid, pending: total - paid };
+  }, [filteredOrdersForReport]);
+
+  const allActivities = useMemo(() => {
+    const activityOrders = orders.map(o => ({ ...o, type: 'order' as const }));
+    const activityReservations = reservations.map(r => ({ ...r, type: 'reservation' as const }));
+    return [...activityOrders, ...activityReservations].sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }, [orders, reservations]);
 
   const publicMenuItems = activeCategory === 'tous' ? menuItems : menuItems.filter(item => item.category === activeCategory);
 
   return (
     <div className="min-h-screen flex flex-col font-sans relative bg-stone-50">
       <style>{`
-        @media print { .no-print { display: none !important; } }
+        @media print {
+          body * { visibility: hidden !important; }
+          #print-section, #print-section * { visibility: visible !important; }
+          #print-section { 
+            position: absolute; 
+            left: 0; 
+            top: 0; 
+            width: 100%; 
+            padding: 0; 
+            background: white; 
+            color: black !important;
+            display: block !important;
+          }
+          .no-print { display: none !important; }
+          #print-section button { display: none !important; }
+          .print-break-inside-avoid { break-inside: avoid; }
+          .print-page-break-after { page-break-after: always; }
+          table { width: 100% !important; border-collapse: collapse !important; }
+          th, td { border: 1px solid #eee !important; padding: 10px !important; }
+        }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
       `}</style>
 
-      {/* FIXED ADMIN NAV */}
+      {/* ADMIN NAV */}
       {isAdminMode && (
-        <div className="fixed top-0 left-0 w-full bg-stone-900 text-white py-4 px-6 z-[200] flex justify-between items-center shadow-2xl no-print border-b border-orange-600/30">
-          <div className="flex gap-6 overflow-x-auto items-center">
-            <span className="text-[10px] font-black bg-orange-600 px-3 py-1 rounded-full uppercase">MODE GÉRANT</span>
-            <button onClick={() => setShowAdminPortal('orders')} className={`text-[10px] font-bold uppercase tracking-widest ${showAdminPortal === 'orders' ? 'text-orange-400' : 'text-stone-400'}`}>Commandes</button>
-            <button onClick={() => setShowAdminPortal('reservations')} className={`text-[10px] font-bold uppercase tracking-widest ${showAdminPortal === 'reservations' ? 'text-orange-400' : 'text-stone-400'}`}>Réservations</button>
-            <button onClick={() => setShowAdminPortal('accounting')} className={`text-[10px] font-bold uppercase tracking-widest ${showAdminPortal === 'accounting' ? 'text-orange-400' : 'text-stone-400'}`}>Bilan</button>
-            <button onClick={() => setShowAdminPortal('menu_manager')} className={`text-[10px] font-bold uppercase tracking-widest ${showAdminPortal === 'menu_manager' ? 'text-orange-400' : 'text-stone-400'}`}>Menu</button>
+        <nav className="fixed top-0 left-0 w-full bg-stone-900 text-white py-4 px-6 z-[200] flex justify-between items-center shadow-2xl no-print border-b border-orange-600/30" aria-label="Console d'administration">
+          <div className="flex gap-4 md:gap-6 overflow-x-auto items-center no-scrollbar">
+            <span className="text-[10px] font-black bg-orange-600 px-3 py-1 rounded-full uppercase shrink-0">ADMIN</span>
+            <button onClick={() => setShowAdminPortal('dashboard')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'dashboard' ? 'text-orange-400' : 'text-stone-400'}`}>Activités</button>
+            <button onClick={() => setShowAdminPortal('orders')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'orders' ? 'text-orange-400' : 'text-stone-400'}`}>Commandes</button>
+            <button onClick={() => setShowAdminPortal('reservations')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'reservations' ? 'text-orange-400' : 'text-stone-400'}`}>Réservations</button>
+            <button onClick={() => setShowAdminPortal('accounting')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'accounting' ? 'text-orange-400' : 'text-stone-400'}`}>Bilan</button>
+            <button onClick={() => setShowAdminPortal('menu_manager')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'menu_manager' ? 'text-orange-400' : 'text-stone-400'}`}>Menu</button>
           </div>
-          <button onClick={logoutAdmin} className="text-[10px] font-black border border-white/20 px-4 py-2 rounded-lg hover:bg-white/10">QUITTER</button>
-        </div>
+          <button onClick={logoutAdmin} className="text-[10px] font-black border border-white/20 px-4 py-2 rounded-lg hover:bg-white hover:text-stone-900 transition-colors ml-4 shrink-0">QUITTER</button>
+        </nav>
       )}
 
+      {/* PUBLIC VIEW */}
       <div className={`no-print ${isAdminMode ? 'pt-20' : ''}`}>
-        <section className="h-[90vh] relative flex items-center justify-center bg-stone-950 overflow-hidden">
-          <div className="absolute inset-0 opacity-40">
-            <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1920" className="w-full h-full object-cover" alt="" />
-          </div>
-          <div className="relative text-center px-4">
-            <Logo className="w-24 h-24 mx-auto mb-8 text-orange-500" />
-            <h1 className="text-6xl md:text-9xl font-serif text-white italic mb-6">Grand Bassam</h1>
-            <p className="text-stone-300 text-xl md:text-2xl font-light tracking-[0.2em] uppercase">L'Excellence Ivoirienne à Niamey</p>
-          </div>
-        </section>
+        <Navbar />
+        
+        <main>
+          <section id="hero" className="h-[80vh] relative flex items-center justify-center bg-stone-950 overflow-hidden">
+            <div className="absolute inset-0 opacity-40">
+              <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1920" className="w-full h-full object-cover" alt="Atmosphère chaleureuse du restaurant" />
+            </div>
+            <div className="relative text-center px-4">
+              <Logo className="w-20 h-20 mx-auto mb-6 text-orange-500" />
+              <h1 className="text-6xl md:text-8xl font-serif text-white italic mb-4">{RESTAURANT_NAME}</h1>
+              <p className="text-stone-300 text-lg md:text-xl font-light tracking-[0.2em] uppercase">Saveurs Ivoiriennes • Niamey</p>
+              <div className="mt-12 flex flex-col md:flex-row gap-6 justify-center">
+                <button onClick={() => document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' })} className="px-12 py-5 bg-orange-600 text-white rounded-full font-black uppercase tracking-widest shadow-2xl hover:bg-orange-700 transition-all">Découvrir la Carte</button>
+              </div>
+            </div>
+          </section>
 
-        <section id="menu" className="py-32 bg-stone-50">
-          <div className="max-w-7xl mx-auto px-4 mb-20 text-center">
-             <h2 className="text-6xl font-serif font-bold italic mb-6">La Carte Gastronomique</h2>
-             <div className="flex justify-center gap-8 border-b pb-4 overflow-x-auto custom-scrollbar">
-                {['tous', 'entrée', 'plat', 'dessert', 'boisson'].map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} className={`text-xs font-black uppercase tracking-widest pb-2 ${activeCategory === cat ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400 hover:text-stone-600'}`}>{cat}</button>
-                ))}
-             </div>
-          </div>
-          <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-2 lg:grid-cols-3 gap-12">
-            {publicMenuItems.map(dish => <MenuCard key={dish.id} dish={dish} />)}
-          </div>
-        </section>
+          <section id="histoire" className="py-24 bg-white">
+            <div className="max-w-5xl mx-auto px-4 text-center">
+              <h2 className="text-4xl md:text-5xl font-serif font-bold italic mb-8">L'Héritage de Bassam</h2>
+              <p className="text-stone-600 text-lg leading-relaxed max-w-3xl mx-auto mb-12">
+                Le {RESTAURANT_NAME} vous transporte au cœur de la Côte d'Ivoire. Nous célébrons l'authenticité des recettes ancestrales du littoral ivoirien, mêlant traditions culinaires et hospitalité légendaire au cœur de Niamey.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
+                 <div>
+                    <span className="text-4xl mb-4 block">🌶️</span>
+                    <h3 className="font-bold uppercase tracking-widest text-xs mb-2">Épices Authentiques</h3>
+                    <p className="text-stone-400 text-sm">Directement importées d'Abidjan pour un goût 100% ivoirien.</p>
+                 </div>
+                 <div>
+                    <span className="text-4xl mb-4 block">🐟</span>
+                    <h3 className="font-bold uppercase tracking-widest text-xs mb-2">Produits Frais</h3>
+                    <p className="text-stone-400 text-sm">Des produits de qualité sélectionnés chaque matin sur le marché.</p>
+                 </div>
+                 <div>
+                    <span className="text-4xl mb-4 block">🤝</span>
+                    <h3 className="font-bold uppercase tracking-widest text-xs mb-2">Accueil Chaleureux</h3>
+                    <p className="text-stone-400 text-sm">Le "S'en fout la mort" et la joie de vivre à votre table.</p>
+                 </div>
+              </div>
+            </div>
+          </section>
 
-        <section id="reserve" className="py-32 bg-white border-t">
-          <div className="max-w-4xl mx-auto px-4">
-             <div className="text-center mb-16">
-                <h2 className="text-5xl font-serif font-bold italic mb-4 leading-tight">Réserver une Table</h2>
-                <p className="text-stone-500 font-light italic">Vivez une expérience gastronomique authentique.</p>
-             </div>
-             <ReservationForm />
-          </div>
-        </section>
+          <section id="menu" className="py-24 bg-stone-50">
+            <div className="max-w-7xl mx-auto px-4 mb-16 text-center">
+               <h2 className="text-4xl font-serif font-bold italic mb-12">La Carte du Voyageur</h2>
+               <div className="flex justify-center gap-6 border-b border-stone-200 pb-4 overflow-x-auto custom-scrollbar" role="tablist" aria-label="Catégories du menu">
+                  {['tous', 'entrée', 'plat', 'dessert', 'boisson'].map(cat => (
+                    <button 
+                      key={cat} 
+                      role="tab"
+                      aria-selected={activeCategory === cat}
+                      onClick={() => setActiveCategory(cat)} 
+                      className={`text-xs font-black uppercase tracking-widest pb-4 transition-all whitespace-nowrap px-4 ${activeCategory === cat ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400 hover:text-stone-600'}`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+               </div>
+            </div>
+            <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-2 lg:grid-cols-3 gap-12" aria-live="polite">
+              {publicMenuItems.map(dish => <MenuCard key={dish.id} dish={dish} />)}
+            </div>
+          </section>
 
-        <footer className="bg-stone-950 text-white pt-32 pb-12 px-6 border-t border-white/5">
-          <div className="max-w-7xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-20 mb-32 items-start">
-              <div className="space-y-12">
-                <div className="flex items-center gap-4">
-                  <Logo className="w-16 h-16 text-orange-500" />
-                  <div className="flex flex-col">
-                    <span className="text-3xl font-serif italic font-bold tracking-tight uppercase">Grand Bassam</span>
-                    <span className="text-[10px] text-stone-500 font-black uppercase tracking-[0.4em]">Niamey • Kouara Kano</span>
+          <section id="reserve" className="py-24 bg-stone-900 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-1/3 h-full opacity-10 pointer-events-none">
+              <svg viewBox="0 0 100 100" className="w-full h-full"><path d="M0 0 L100 0 L100 100 Z" fill="currentColor"/></svg>
+            </div>
+            <div className="max-w-7xl mx-auto px-4 grid lg:grid-cols-2 gap-20 items-center">
+              <div>
+                <h2 className="text-5xl font-serif font-bold italic mb-6">Réservez votre Table</h2>
+                <p className="text-stone-400 text-lg mb-10">Une occasion spéciale ? Un repas d'affaires ou une envie soudaine d'alloco ? Notre équipe vous accueille dans un cadre élégant et feutré.</p>
+                <div className="space-y-6">
+                  <div className="flex items-center gap-6">
+                    <div className="w-12 h-12 bg-orange-600/20 text-orange-500 rounded-2xl flex items-center justify-center">📍</div>
+                    <div>
+                      <p className="text-xs uppercase font-black text-stone-500">Localisation</p>
+                      <p className="font-bold">{LOCATION}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex flex-col gap-8 p-10 bg-white/5 rounded-[4rem] border border-white/5 items-center text-center">
-                   <QRCodeComponent className="w-56 h-64" />
-                   <p className="text-sm font-light text-stone-400">Scannez pour commander en ligne.</p>
+                  <div className="flex items-center gap-6">
+                    <div className="w-12 h-12 bg-orange-600/20 text-orange-500 rounded-2xl flex items-center justify-center">📞</div>
+                    <div>
+                      <p className="text-xs uppercase font-black text-stone-500">Contact Rapide</p>
+                      <p className="font-bold">{PHONE}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
-              
-              <div className="lg:pt-6 space-y-12">
-                <div>
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.5em] text-orange-500 mb-6 border-b border-white/10 pb-4">Contacts</h4>
-                  <div className="space-y-6">
-                    <a href={`tel:${PHONE.replace(/\s+/g, '')}`} className="block">
-                      <span className="text-[10px] font-black text-stone-500 uppercase block mb-2">Réservations</span>
-                      <span className="text-3xl font-bold hover:text-orange-500 transition-colors">{PHONE}</span>
-                    </a>
-                    <div>
-                      <span className="text-[10px] font-black text-stone-500 uppercase block mb-2">Localisation</span>
-                      <span className="text-lg font-bold block">{LOCATION}</span>
-                    </div>
-                  </div>
-                </div>
+              <div className="bg-white p-8 md:p-12 rounded-[3rem] shadow-2xl text-stone-900">
+                <ReservationForm />
+              </div>
+            </div>
+          </section>
+        </main>
 
-                {/* VISIBLE ADMIN ACCESS */}
-                <div className="pt-8">
-                  <button 
-                    onClick={() => setShowLoginModal(true)}
-                    className="flex items-center gap-3 px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all group"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-orange-600 flex items-center justify-center text-white">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                    </div>
-                    <div className="text-left">
-                      <span className="text-[10px] font-black uppercase text-stone-500 block">Espace Professionnel</span>
-                      <span className="text-xs font-bold uppercase tracking-widest text-white group-hover:text-orange-500">Connexion Gérant</span>
-                    </div>
-                  </button>
-                </div>
+        <footer className="bg-stone-950 text-white py-20 px-6 border-t border-white/5">
+          <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-12 items-start">
+            <div className="col-span-1 md:col-span-2">
+              <div className="flex items-center gap-4 mb-6">
+                <Logo className="w-10 h-10 text-orange-500" />
+                <span className="text-2xl font-serif italic font-bold uppercase tracking-tighter">{RESTAURANT_NAME}</span>
+              </div>
+              <p className="text-stone-500 text-sm leading-relaxed max-w-sm mb-8">
+                L'excellence de la gastronomie ivoirienne à Niamey. Une expérience sensorielle unique où tradition et modernité se rencontrent.
+              </p>
+              <div className="flex items-center gap-4 text-stone-600">
+                <span className="w-8 h-px bg-stone-800"></span>
+                <span className="text-[10px] font-black uppercase tracking-widest">{LOCATION}</span>
+              </div>
+            </div>
+            
+            <div>
+              <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-600 mb-6">Menu Digital</h4>
+              <div className="flex flex-col gap-4">
+                <QRCodeImage size={100} className="self-start opacity-80 hover:opacity-100 transition" />
+                <p className="text-[9px] text-stone-500 uppercase font-black tracking-widest leading-loose">
+                  Scannez pour voir<br/>la carte sur mobile
+                </p>
               </div>
             </div>
 
-            <div className="pt-16 border-t border-white/5 flex justify-between items-center">
-              <p className="text-[10px] font-black uppercase tracking-[0.4em] text-stone-700">© {new Date().getFullYear()} {RESTAURANT_NAME} Niamey.</p>
-              <span className="text-[10px] font-black uppercase tracking-widest text-stone-800 italic">Saveurs d'Abidjan</span>
+            <div className="flex flex-col md:items-end">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-600 mb-6">Gérance</h4>
+              <button onClick={() => setShowLoginModal(true)} className="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all mb-8 w-full md:w-auto">Administration</button>
+              <p className="text-[10px] text-stone-600 uppercase tracking-widest text-right">© {new Date().getFullYear()} {RESTAURANT_NAME}</p>
+              <p className="text-[9px] text-stone-800 uppercase tracking-widest mt-2 text-right">Conçu pour l'excellence</p>
             </div>
           </div>
         </footer>
       </div>
 
-      {/* LOGIN MODAL */}
-      {showLoginModal && (
-        <div className="fixed inset-0 bg-stone-950/98 z-[500] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] p-12 max-w-sm w-full shadow-2xl relative">
-            <div className="text-center mb-8">
-               <Logo className="w-12 h-12 mx-auto mb-4" />
-               <h2 className="text-2xl font-bold font-serif italic uppercase">Accès Gérant</h2>
+      {/* ADMIN PORTAL MODALS */}
+      {isAdminMode && showAdminPortal !== 'none' && (
+        <div 
+          className="fixed inset-0 bg-stone-50 z-[300] flex flex-col no-print overflow-hidden"
+          role="region"
+          aria-label="Portail d'administration"
+        >
+          <div className="p-4 md:p-8 border-b flex justify-between items-center bg-white shadow-sm">
+            <h2 className="text-xl md:text-2xl font-serif font-bold italic uppercase flex items-center gap-3 text-stone-900">
+              <span className="w-2 h-2 rounded-full bg-orange-600"></span>
+              {showAdminPortal === 'dashboard' ? 'Journal d\'Activité' :
+               showAdminPortal === 'orders' ? 'Gestion des Commandes' : 
+               showAdminPortal === 'reservations' ? 'Gestion des Réservations' : 
+               showAdminPortal === 'accounting' ? 'Bilan Financier' : 'Menu Management'}
+            </h2>
+            <div className="flex items-center gap-2 md:gap-4">
+              {showAdminPortal === 'dashboard' && (
+                <button 
+                  onClick={() => setShowMasterReport(true)}
+                  className="bg-stone-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-orange-600 transition flex items-center gap-2"
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
+                  Export Activités (PDF)
+                </button>
+              )}
+              {showAdminPortal === 'menu_manager' && (
+                <button 
+                  onClick={() => setShowAddDishModal(true)}
+                  className="bg-orange-600 text-white px-4 md:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-orange-700 transition"
+                >
+                  Ajouter un Plat
+                </button>
+              )}
+              {showAdminPortal === 'accounting' && (
+                <button 
+                  onClick={handlePrint}
+                  className="bg-stone-900 text-white px-4 md:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-stone-800 transition flex items-center gap-2"
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
+                  Export Bilan (PDF)
+                </button>
+              )}
+              <button onClick={() => setShowAdminPortal('none')} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center border rounded-full hover:bg-stone-200 transition-colors" aria-label="Fermer le portail admin">✕</button>
             </div>
-            <form onSubmit={handleLogin} className="space-y-4">
-              <input type="text" placeholder="Identifiant" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-5 bg-stone-50 rounded-2xl border border-stone-100 font-bold focus:ring-2 focus:ring-orange-500 outline-none" required />
-              <input type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-5 bg-stone-50 rounded-2xl border border-stone-100 font-bold focus:ring-2 focus:ring-orange-500 outline-none" required />
-              {loginError && <p className="text-red-500 text-[10px] text-center font-bold uppercase">{loginError}</p>}
-              <button type="submit" className="w-full py-5 bg-stone-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-orange-600 transition-all">SE CONNECTER</button>
-              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-stone-400 text-[10px] font-black uppercase mt-4">Fermer</button>
+          </div>
+          
+          <div className="flex-grow overflow-y-auto p-4 md:p-8 custom-scrollbar bg-stone-50">
+            {showAdminPortal === 'dashboard' && (
+              <div className="max-w-6xl mx-auto space-y-8">
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
+                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Commandes</p>
+                       <p className="text-3xl font-serif font-bold italic text-stone-900">{orders.length}</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
+                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Réservations</p>
+                       <p className="text-3xl font-serif font-bold italic text-orange-600">{reservations.length}</p>
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
+                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Menu</p>
+                       <p className="text-3xl font-serif font-bold italic text-stone-900">{menuItems.length}</p>
+                    </div>
+                    <div className="bg-stone-900 p-6 rounded-3xl shadow-xl">
+                       <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1">Recettes</p>
+                       <p className="text-xl font-serif font-bold text-white">{stats.paid.toLocaleString()} F</p>
+                    </div>
+                 </div>
+
+                 <div className="bg-white rounded-[2.5rem] border border-stone-100 shadow-xl overflow-hidden">
+                    <div className="px-8 py-6 border-b bg-stone-50 flex justify-between items-center">
+                       <h3 className="font-bold text-stone-800 uppercase text-xs tracking-widest">Toutes les Activités</h3>
+                       <button onClick={refreshAdminData} className="text-[9px] font-black text-stone-400 hover:text-orange-600 uppercase tracking-widest">Actualiser ↻</button>
+                    </div>
+                    <div className="divide-y divide-stone-50">
+                       {allActivities.length === 0 ? (
+                         <div className="p-20 text-center text-stone-400 italic">Aucune activité enregistrée pour le moment.</div>
+                       ) : (
+                         allActivities.map((act: any) => (
+                           <div key={act.id} className="p-6 flex items-center justify-between hover:bg-stone-50 transition-colors">
+                              <div className="flex items-center gap-6">
+                                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner ${act.type === 'order' ? 'bg-orange-50 text-orange-600' : 'bg-stone-900 text-white'}`}>
+                                    {act.type === 'order' ? '🍲' : '🗓️'}
+                                 </div>
+                                 <div>
+                                    <div className="flex items-center gap-3">
+                                       <span className="font-bold text-stone-900">{act.type === 'order' ? act.dishName : `Table pour ${act.name}`}</span>
+                                       <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${act.type === 'order' ? 'bg-orange-100 text-orange-700' : 'bg-stone-200 text-stone-700'}`}>
+                                          {act.type === 'order' ? 'Commande' : 'Réservation'}
+                                       </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">
+                                         {new Date(act.timestamp).toLocaleString('fr-FR')}
+                                      </p>
+                                      {act.status && <span className="text-[9px] text-stone-300">•</span>}
+                                      {act.status && <span className="text-[9px] font-bold text-stone-500 uppercase">{act.status}</span>}
+                                    </div>
+                                 </div>
+                              </div>
+                              <button 
+                                onClick={() => setShowAdminPortal(act.type === 'order' ? 'orders' : 'reservations')}
+                                className="text-[10px] font-black text-stone-400 hover:text-orange-600 transition uppercase tracking-widest border border-stone-100 px-4 py-2 rounded-xl"
+                              >
+                                Gérer
+                              </button>
+                           </div>
+                         ))
+                       )}
+                    </div>
+                 </div>
+              </div>
+            )}
+
+            {showAdminPortal === 'orders' && (
+              <div className="space-y-4 max-w-4xl mx-auto">
+                {orders.length === 0 ? (
+                  <p className="text-center text-stone-400 py-20 font-serif italic">Aucune commande enregistrée pour le moment.</p>
+                ) : (
+                  orders.map(order => (
+                    <div key={order.id} className="p-6 border bg-white rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition">
+                      <div>
+                        <h3 className="font-bold text-lg text-stone-800">{order.dishName} x{order.quantity}</h3>
+                        <p className="text-sm text-stone-500 font-medium">{order.customerName} • {order.customerPhone}</p>
+                        <div className="flex items-center gap-3 mt-2">
+                           <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${order.status === 'Payé' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-orange-50 text-orange-700 border border-orange-100'}`}>
+                              {order.status}
+                           </span>
+                           {order.isDelivery && <span className="text-[10px] font-black uppercase text-stone-400">🚀 Livraison</span>}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => setSelectedInvoice(order)} className="px-4 py-2 bg-stone-100 rounded-lg text-[10px] font-black uppercase hover:bg-stone-200 transition">Facture</button>
+                        {order.status === 'Nouveau' && (
+                          <button onClick={() => updateOrderStatus(order.id, 'Payé')} className="px-4 py-2 bg-green-600 text-white rounded-lg text-[10px] font-black uppercase hover:bg-green-700 transition">Encaisser</button>
+                        )}
+                        <button onClick={() => deleteOrder(order.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition" aria-label="Supprimer la commande">✕</button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {showAdminPortal === 'reservations' && (
+              <div className="space-y-4 max-w-4xl mx-auto">
+                {reservations.length === 0 ? (
+                  <p className="text-center text-stone-400 py-20 font-serif italic">Aucune réservation pour le moment.</p>
+                ) : (
+                  reservations.map(res => (
+                    <div key={res.id} className="p-6 border bg-white rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition">
+                      <div>
+                        <div className="flex items-center gap-3">
+                           <h3 className="font-bold text-lg text-stone-800">{res.name}</h3>
+                           <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${res.status === 'Confirmé' ? 'bg-green-100 text-green-700' : res.status === 'Terminé' ? 'bg-stone-100 text-stone-600' : 'bg-orange-100 text-orange-700'}`}>
+                              {res.status}
+                           </span>
+                        </div>
+                        <p className="text-sm text-stone-500">{res.phone} • <span className="font-bold text-stone-800">{res.guests}</span></p>
+                        <p className="text-[10px] text-orange-600 font-black uppercase tracking-widest mt-1">Prévu pour le : {new Date(res.date).toLocaleDateString()}</p>
+                        {res.message && <p className="mt-2 text-xs italic text-stone-400 bg-stone-50 p-2 rounded-lg border border-stone-100">"{res.message}"</p>}
+                      </div>
+                      <div className="flex gap-2">
+                        {res.status === 'En attente' && (
+                          <button onClick={() => updateReservationStatus(res.id, 'Confirmé')} className="px-4 py-2 bg-orange-600 text-white rounded-lg text-[10px] font-black uppercase hover:bg-orange-700 transition">Confirmer</button>
+                        )}
+                        {res.status === 'Confirmé' && (
+                          <button onClick={() => updateReservationStatus(res.id, 'Terminé')} className="px-4 py-2 bg-stone-900 text-white rounded-lg text-[10px] font-black uppercase hover:bg-stone-800 transition">Terminer</button>
+                        )}
+                        <button onClick={() => deleteReservation(res.id)} className="p-2 text-red-400 hover:text-red-600 transition">✕</button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {showAdminPortal === 'accounting' && (
+              <div className="max-w-5xl mx-auto space-y-10">
+                <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm flex flex-wrap gap-4 items-end no-print">
+                   <div className="flex-1 min-w-[150px]">
+                      <label htmlFor="start-date" className="block text-[10px] font-black uppercase text-stone-400 mb-1 ml-1">Période du</label>
+                      <input id="start-date" type="date" value={reportRange.start} onChange={e => setReportRange({...reportRange, start: e.target.value})} className="w-full p-2.5 bg-stone-50 border rounded-xl text-sm" />
+                   </div>
+                   <div className="flex-1 min-w-[150px]">
+                      <label htmlFor="end-date" className="block text-[10px] font-black uppercase text-stone-400 mb-1 ml-1">Au</label>
+                      <input id="end-date" type="date" value={reportRange.end} onChange={e => setReportRange({...reportRange, end: e.target.value})} className="w-full p-2.5 bg-stone-50 border rounded-xl text-sm" />
+                   </div>
+                   <button onClick={handlePrint} className="bg-orange-600 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-700 transition shadow-lg">Exporter Rapport PDF</button>
+                </div>
+
+                <div id="print-section" className="space-y-8 p-0 md:p-10 bg-white md:rounded-[3rem] md:shadow-2xl">
+                  <div className="hidden print:block text-center border-b border-stone-200 pb-10 mb-10">
+                    <div className="flex justify-center mb-4"><Logo className="w-16 h-16 text-orange-600" /></div>
+                    <h1 className="text-3xl font-serif font-bold text-stone-900">{RESTAURANT_NAME}</h1>
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-stone-400 mt-2">Bilan d'Activité Financière</p>
+                    <p className="text-xs font-bold text-stone-600 mt-4">Période : {new Date(reportRange.start).toLocaleDateString()} — {new Date(reportRange.end).toLocaleDateString()}</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="p-8 bg-stone-900 text-white rounded-3xl text-center shadow-xl">
+                       <p className="text-[10px] font-black uppercase opacity-50 mb-2 tracking-widest">Total CA Potentiel</p>
+                       <p className="text-3xl font-serif italic text-orange-400">{stats.total.toLocaleString()} F</p>
+                    </div>
+                    <div className="p-8 bg-green-50 border border-green-100 rounded-3xl text-center">
+                       <p className="text-[10px] font-black uppercase text-green-500 mb-2 tracking-widest">Encaissements Réels</p>
+                       <p className="text-3xl font-serif italic text-green-700">{stats.paid.toLocaleString()} F</p>
+                    </div>
+                    <div className="p-8 bg-orange-50 border border-orange-100 rounded-3xl text-center">
+                       <p className="text-[10px] font-black uppercase text-orange-500 mb-2 tracking-widest">Factures Impayées</p>
+                       <p className="text-3xl font-serif italic text-orange-700">{stats.pending.toLocaleString()} F</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-stone-100 overflow-hidden shadow-sm">
+                    <table className="w-full text-left text-sm" aria-label="Détail des transactions">
+                      <thead className="border-b bg-stone-50 text-[10px] font-black uppercase text-stone-400">
+                        <tr>
+                          <th className="py-5 px-6">Date</th>
+                          <th className="py-5 px-6">Client / Plat</th>
+                          <th className="py-5 px-6">Statut</th>
+                          <th className="py-5 px-6 text-right">Montant</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-50">
+                        {filteredOrdersForReport.length === 0 ? (
+                           <tr><td colSpan={4} className="py-10 text-center text-stone-400 italic">Aucune donnée sur cette période.</td></tr>
+                        ) : (
+                          filteredOrdersForReport.map(o => (
+                            <tr key={o.id} className="hover:bg-stone-50 transition-colors print-break-inside-avoid">
+                              <td className="py-4 px-6 text-xs text-stone-400 font-bold">{new Date(o.timestamp).toLocaleDateString()}</td>
+                              <td className="py-4 px-6">
+                                 <p className="font-bold text-stone-800">{o.customerName}</p>
+                                 <p className="text-[10px] text-stone-400 uppercase">{o.dishName} x{o.quantity}</p>
+                              </td>
+                              <td className="py-4 px-6 uppercase text-[9px] font-black">
+                                <span className={o.status === 'Payé' ? 'text-green-600' : 'text-orange-600'}>{o.status}</span>
+                              </td>
+                              <td className="py-4 px-6 text-right font-serif font-bold text-stone-900">{(o.price * o.quantity).toLocaleString()} F</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="hidden print:block pt-10 mt-10 border-t border-stone-200">
+                     <div className="flex justify-between items-end">
+                        <div className="space-y-1">
+                           <p className="text-[10px] font-black uppercase text-stone-400">Généré le</p>
+                           <p className="text-xs font-bold text-stone-900">{new Date().toLocaleString()}</p>
+                        </div>
+                        <div className="text-right">
+                           <p className="text-[10px] font-black uppercase text-stone-400 mb-2">Signature & Cachet</p>
+                           <div className="w-40 h-16 border-b border-stone-300"></div>
+                        </div>
+                     </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showAdminPortal === 'menu_manager' && (
+              <div className="grid gap-6 max-w-5xl mx-auto pb-20">
+                {menuItems.map(dish => (
+                  <div key={dish.id} className="p-6 bg-white border border-stone-100 rounded-[2rem] flex flex-col md:flex-row gap-8 shadow-sm group hover:shadow-xl transition-all duration-500">
+                    <div className="relative w-full md:w-48 h-48 rounded-2xl overflow-hidden bg-stone-100 shadow-inner">
+                      <img src={dish.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=400"} className="w-full h-full object-cover" alt="" />
+                    </div>
+                    <div className="flex-grow flex flex-col justify-between">
+                        <div>
+                           <div className="flex justify-between items-start mb-4">
+                              <div>
+                                 <h3 className="text-2xl font-bold text-stone-800">{dish.name}</h3>
+                                 <span className="inline-block px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-[9px] font-black uppercase tracking-[0.2em] mt-2 border border-orange-100">{dish.category}</span>
+                              </div>
+                              <div className="text-2xl font-serif font-bold text-stone-900">{dish.price.toLocaleString()} F</div>
+                           </div>
+                           <p className="text-stone-400 text-sm mb-6 leading-relaxed line-clamp-2 italic">"{dish.description}"</p>
+                        </div>
+                        <div className="flex gap-4">
+                           <button onClick={() => setEditingDish(dish)} className="px-8 py-3 bg-stone-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition shadow-lg">Modifier</button>
+                           <button onClick={() => deleteDish(dish.id)} className="px-8 py-3 border border-red-100 text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition">Supprimer</button>
+                        </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MASTER REPORT MODAL (ALL ACTIVITIES EXPORT) */}
+      {showMasterReport && (
+        <div className="fixed inset-0 bg-stone-950/95 z-[450] flex items-center justify-center p-4 no-print">
+          <div className="bg-white rounded-[3rem] p-10 max-w-4xl w-full shadow-2xl relative overflow-y-auto max-h-[90vh] custom-scrollbar">
+            <h2 className="text-2xl font-serif font-bold italic mb-6">Prévisualisation du Rapport Global</h2>
+            <p className="text-stone-400 text-sm mb-8">Ce document regroupe le bilan financier et l'historique complet de toutes les activités.</p>
+            
+            <div id="print-section" className="bg-white text-stone-900 p-0 md:p-8">
+              {/* PAGE 1: BILAN */}
+              <div className="print-page-break-after">
+                <div className="text-center border-b border-stone-200 pb-10 mb-10">
+                  <Logo className="w-16 h-16 text-orange-600 mx-auto mb-4" />
+                  <h1 className="text-3xl font-serif font-bold">{RESTAURANT_NAME}</h1>
+                  <h2 className="text-lg font-black uppercase tracking-[0.2em] text-stone-400 mt-2">RAPPORT GLOBAL D'ACTIVITÉ</h2>
+                  <p className="text-xs font-bold text-stone-600 mt-2">Généré le {new Date().toLocaleString()}</p>
+                </div>
+
+                <h3 className="text-xl font-serif font-bold mb-6 border-l-4 border-orange-600 pl-4 uppercase tracking-widest text-xs">I. Résumé Financier</h3>
+                <div className="grid grid-cols-3 gap-4 mb-10">
+                  <div className="p-6 border rounded-2xl text-center">
+                    <p className="text-[9px] font-black uppercase text-stone-400 mb-1">Chiffre d'Affaire</p>
+                    <p className="text-xl font-serif font-bold">{stats.total.toLocaleString()} F</p>
+                  </div>
+                  <div className="p-6 border rounded-2xl text-center bg-green-50/50">
+                    <p className="text-[9px] font-black uppercase text-green-500 mb-1">Recettes Encaissées</p>
+                    <p className="text-xl font-serif font-bold text-green-700">{stats.paid.toLocaleString()} F</p>
+                  </div>
+                  <div className="p-6 border rounded-2xl text-center bg-orange-50/50">
+                    <p className="text-[9px] font-black uppercase text-orange-500 mb-1">Encaissements Dus</p>
+                    <p className="text-xl font-serif font-bold text-orange-700">{stats.pending.toLocaleString()} F</p>
+                  </div>
+                </div>
+
+                <h3 className="text-xl font-serif font-bold mb-6 border-l-4 border-orange-600 pl-4 uppercase tracking-widest text-xs">II. Récapitulatif des Commandes</h3>
+                <table className="w-full text-xs mb-10">
+                  <thead className="bg-stone-50">
+                    <tr>
+                      <th className="text-left font-black p-3">ID / Date</th>
+                      <th className="text-left font-black p-3">Client</th>
+                      <th className="text-left font-black p-3">Détail</th>
+                      <th className="text-right font-black p-3">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map(o => (
+                      <tr key={o.id} className="border-b">
+                        <td className="p-3">#{o.id.slice(-6)}<br/>{new Date(o.timestamp).toLocaleDateString()}</td>
+                        <td className="p-3 font-bold">{o.customerName}</td>
+                        <td className="p-3">{o.dishName} x{o.quantity}<br/>{o.status}</td>
+                        <td className="p-3 text-right font-bold">{(o.price * o.quantity).toLocaleString()} F</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* PAGE 2: RESERVATIONS */}
+              <div className="mt-10">
+                <h3 className="text-xl font-serif font-bold mb-6 border-l-4 border-orange-600 pl-4 uppercase tracking-widest text-xs">III. Journal des Réservations</h3>
+                <table className="w-full text-xs">
+                  <thead className="bg-stone-50">
+                    <tr>
+                      <th className="text-left font-black p-3">Date Prévue</th>
+                      <th className="text-left font-black p-3">Client</th>
+                      <th className="text-left font-black p-3">Couverts</th>
+                      <th className="text-left font-black p-3">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reservations.map(r => (
+                      <tr key={r.id} className="border-b">
+                        <td className="p-3 font-bold">{new Date(r.date).toLocaleDateString()}</td>
+                        <td className="p-3">{r.name}<br/>{r.phone}</td>
+                        <td className="p-3">{r.guests}</td>
+                        <td className="p-3 uppercase font-black text-[9px]">{r.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="hidden print:block mt-20 text-center">
+                  <QRCodeImage size={80} className="mb-4" />
+                  <p className="text-[10px] font-serif italic text-stone-400">Rapport officiel généré par le système de gestion Grand Bassam.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-10 flex gap-4">
+              <button 
+                onClick={handlePrint} 
+                className="flex-1 bg-stone-900 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition shadow-xl"
+              >
+                Lancer l'Impression / Export PDF
+              </button>
+              <button 
+                onClick={() => setShowMasterReport(false)} 
+                className="flex-1 bg-stone-50 text-stone-400 py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-stone-100 transition"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD / EDIT DISH MODAL */}
+      {(showAddDishModal || editingDish) && (
+        <div className="fixed inset-0 bg-stone-950/90 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-10 max-w-xl w-full shadow-2xl relative overflow-y-auto max-h-[90vh] custom-scrollbar">
+            <h2 className="text-2xl font-serif font-bold italic mb-8">{editingDish ? "Modifier le Plat" : "Nouveau Plat au Menu"}</h2>
+            
+            <form onSubmit={saveDish} className="space-y-6">
+               <div className="grid md:grid-cols-2 gap-6">
+                  <div>
+                     <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Nom du Plat</label>
+                     <input 
+                        required 
+                        type="text" 
+                        value={editingDish ? editingDish.name : newDish.name} 
+                        onChange={e => editingDish ? setEditingDish({...editingDish, name: e.target.value}) : setNewDish({...newDish, name: e.target.value})}
+                        className="w-full p-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-orange-500 font-bold"
+                        placeholder="Ex: Garba Royal"
+                     />
+                  </div>
+                  <div>
+                     <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Prix (FCFA)</label>
+                     <input 
+                        required 
+                        type="number" 
+                        value={editingDish ? editingDish.price : newDish.price} 
+                        onChange={e => editingDish ? setEditingDish({...editingDish, price: parseInt(e.target.value)}) : setNewDish({...newDish, price: parseInt(e.target.value)})}
+                        className="w-full p-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-orange-500"
+                     />
+                  </div>
+               </div>
+
+               <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Catégorie</label>
+                  <select 
+                    className="w-full p-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-orange-500 text-sm font-bold"
+                    value={editingDish ? editingDish.category : newDish.category}
+                    onChange={e => editingDish ? setEditingDish({...editingDish, category: e.target.value as any}) : setNewDish({...newDish, category: e.target.value as any})}
+                  >
+                    <option value="entrée">Entrée</option>
+                    <option value="plat">Plat de Résistance</option>
+                    <option value="dessert">Dessert</option>
+                    <option value="boisson">Boisson</option>
+                  </select>
+               </div>
+
+               <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Description</label>
+                  <textarea 
+                    rows={3}
+                    required
+                    value={editingDish ? editingDish.description : newDish.description}
+                    onChange={e => editingDish ? setEditingDish({...editingDish, description: e.target.value}) : setNewDish({...newDish, description: e.target.value})}
+                    className="w-full p-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-orange-500 resize-none text-sm"
+                    placeholder="Détails du plat, ingrédients principaux..."
+                  />
+               </div>
+
+               <div>
+                  <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Image du Plat</label>
+                  <div className="flex gap-4 items-center p-4 bg-stone-50 rounded-[2rem] border border-stone-100">
+                    <div className="w-24 h-24 bg-white rounded-2xl overflow-hidden border border-stone-200 flex items-center justify-center text-stone-400 shrink-0 shadow-sm">
+                      {(editingDish?.image || newDish.image) ? (
+                        <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" alt="" />
+                      ) : (
+                        <span className="text-2xl text-stone-200">+</span>
+                      )}
+                    </div>
+                    <div className="flex-grow">
+                       <input 
+                         type="file" 
+                         accept="image/*" 
+                         ref={fileInputRef}
+                         onChange={(e) => handleImageUpload(e, !!editingDish)}
+                         className="hidden" 
+                       />
+                       <button 
+                         type="button" 
+                         onClick={() => fileInputRef.current?.click()}
+                         className="w-full py-3 px-4 bg-white border border-stone-200 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-stone-50 transition mb-2"
+                       >
+                         Choisir Photo
+                       </button>
+                       <p className="text-[8px] text-stone-400 uppercase tracking-tighter text-center">PNG / JPG • MAX 5MB</p>
+                    </div>
+                  </div>
+               </div>
+
+               <div className="flex gap-4 pt-4">
+                  <button type="submit" className="flex-1 py-4 bg-orange-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-orange-700 transition shadow-xl shadow-orange-600/20">
+                    {editingDish ? "Mettre à jour" : "Créer le plat"}
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => { setShowAddDishModal(false); setEditingDish(null); }}
+                    className="flex-1 py-4 bg-stone-100 text-stone-400 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-stone-200 transition"
+                  >
+                    Annuler
+                  </button>
+               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ADMIN PORTAL PANEL */}
-      {isAdminMode && showAdminPortal !== 'none' && (
-        <div className="fixed inset-0 bg-white z-[300] flex flex-col no-print">
-          <div className="p-8 border-b flex justify-between items-center bg-stone-50">
-            <h2 className="text-3xl font-serif font-bold italic uppercase text-stone-900">
-               {showAdminPortal === 'orders' && "Journal des Commandes"}
-               {showAdminPortal === 'reservations' && "Gestion des Réservations"}
-               {showAdminPortal === 'accounting' && "Bilan Financier"}
-               {showAdminPortal === 'menu_manager' && "Éditeur de Carte"}
-            </h2>
-            <button onClick={() => setShowAdminPortal('none')} className="w-12 h-12 flex items-center justify-center bg-white border rounded-full hover:bg-stone-100">✕</button>
-          </div>
-          
-          <div className="flex-grow overflow-y-auto p-8 custom-scrollbar">
-            {showAdminPortal === 'orders' && (
-              <div className="space-y-6 max-w-5xl mx-auto">
-                <div className="flex gap-4 mb-8">
-                  {['Tous', 'Nouveau', 'Payé'].map(f => (
-                    <button key={f} onClick={() => setOrderFilter(f as any)} className={`px-6 py-2 rounded-full text-[10px] font-black uppercase border ${orderFilter === f ? 'bg-stone-900 text-white' : 'bg-white text-stone-400'}`}>{f}</button>
-                  ))}
+      {/* INVOICE MODAL (FOR INDIVIDUAL PRINTING) */}
+      {selectedInvoice && (
+        <div 
+          className="fixed inset-0 bg-stone-950/95 z-[400] flex items-center justify-center p-4 no-print"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full shadow-2xl relative animate-in zoom-in duration-300">
+            <div id="print-section" className="text-stone-900 font-sans p-6 md:p-0">
+              <div className="text-center border-b border-stone-100 pb-8 mb-8">
+                <Logo className="w-16 h-16 text-orange-600 mx-auto mb-4" />
+                <h1 className="text-2xl font-serif font-bold uppercase tracking-tight">{RESTAURANT_NAME}</h1>
+                <p className="text-[9px] font-black uppercase text-stone-400 tracking-widest mt-1">{LOCATION}</p>
+                <p className="text-[10px] font-bold text-stone-800 mt-1">{PHONE}</p>
+              </div>
+              
+              <div className="mb-8 space-y-2">
+                 <div className="flex justify-between items-center">
+                    <span className="text-[9px] font-black uppercase text-stone-400 tracking-widest">Facture N°</span>
+                    <span className="text-xs font-bold">{selectedInvoice.id.slice(-8).toUpperCase()}</span>
+                 </div>
+                 <div className="flex justify-between items-center">
+                    <span className="text-[9px] font-black uppercase text-stone-400 tracking-widest">Client</span>
+                    <span className="text-xs font-bold">{selectedInvoice.customerName}</span>
+                 </div>
+                 <div className="flex justify-between items-center">
+                    <span className="text-[9px] font-black uppercase text-stone-400 tracking-widest">Date</span>
+                    <span className="text-xs font-bold">{new Date(selectedInvoice.timestamp).toLocaleDateString()}</span>
+                 </div>
+              </div>
+
+              <div className="border-y border-stone-50 py-6 mb-8">
+                 <div className="flex justify-between items-center mb-1">
+                    <span className="text-sm font-bold text-stone-800">{selectedInvoice.dishName}</span>
+                    <span className="text-xs font-black text-stone-400">x{selectedInvoice.quantity}</span>
+                 </div>
+                 <div className="text-right">
+                    <span className="text-sm font-serif italic text-orange-600">{(selectedInvoice.price * selectedInvoice.quantity).toLocaleString()} F</span>
+                 </div>
+              </div>
+
+              <div className="flex justify-between items-end mb-6">
+                <p className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em]">Total Net</p>
+                <div className="text-right">
+                   <p className="text-3xl font-serif font-bold text-stone-900">{(selectedInvoice.price * selectedInvoice.quantity).toLocaleString()} <span className="text-xs font-sans text-stone-400">FCFA</span></p>
                 </div>
-                {filteredOrders.length === 0 ? <p className="text-center py-20 text-stone-400 font-bold">AUCUNE COMMANDE</p> : 
-                  filteredOrders.map(order => (
-                    <div key={order.id} className={`p-8 border rounded-[2rem] flex flex-col md:flex-row justify-between items-center gap-6 ${order.status === 'Payé' ? 'bg-stone-50 border-stone-200' : 'bg-white border-orange-100 shadow-xl'}`}>
-                      <div className="space-y-2">
-                         <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${order.status === 'Payé' ? 'bg-green-100 text-green-600' : 'bg-orange-600 text-white'}`}>{order.status}</span>
-                         <h3 className="text-2xl font-bold">{order.dishName} <span className="text-orange-600">x{order.quantity}</span></h3>
-                         <p className="text-sm font-medium text-stone-500">{order.customerName} • {order.customerPhone}</p>
-                         <p className="text-[10px] font-bold text-stone-400 uppercase">{order.isDelivery ? `LIVRAISON : ${order.address}` : `SUR PLACE : TABLE ${order.tableNumber}`}</p>
-                      </div>
-                      <div className="flex gap-3">
-                         <button onClick={() => updateOrderStatus(order.id, order.status === 'Payé' ? 'Nouveau' : 'Payé')} className="px-6 py-3 bg-stone-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">MARQUER {order.status === 'Payé' ? 'NON PAYÉ' : 'PAYÉ'}</button>
-                         <button onClick={() => deleteOrder(order.id)} className="p-3 text-red-500 bg-red-50 rounded-xl">✕</button>
-                      </div>
-                    </div>
-                  ))
-                }
               </div>
-            )}
 
-            {showAdminPortal === 'reservations' && (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-                {reservations.length === 0 ? <p className="col-span-full text-center py-20 text-stone-400 font-bold">AUCUNE RÉSERVATION</p> : 
-                  reservations.map(res => (
-                    <div key={res.id} className="p-8 border rounded-[2.5rem] bg-white shadow-sm flex flex-col h-full">
-                       <div className="flex justify-between items-start mb-6">
-                          <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${res.status === 'Confirmé' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>{res.status}</span>
-                          <span className="text-[10px] font-bold text-stone-400">{new Date(res.timestamp).toLocaleDateString()}</span>
-                       </div>
-                       <h3 className="text-xl font-bold mb-1">{res.name}</h3>
-                       <p className="text-sm text-stone-500 font-bold mb-4">{res.phone}</p>
-                       <div className="bg-stone-50 p-4 rounded-2xl space-y-2 mb-6 text-sm font-medium">
-                          <p>📅 {res.date}</p>
-                          <p>👥 {res.guests}</p>
-                          {res.message && <p className="italic text-stone-400 text-xs">"{res.message}"</p>}
-                       </div>
-                       <div className="mt-auto flex gap-2">
-                          <button onClick={() => updateReservationStatus(res.id, 'Confirmé')} className="flex-1 py-3 bg-stone-900 text-white rounded-xl text-[9px] font-black uppercase">Confirmer</button>
-                          <button onClick={() => deleteReservation(res.id)} className="px-4 py-3 bg-red-50 text-red-500 rounded-xl">✕</button>
-                       </div>
-                    </div>
-                  ))
-                }
+              <div className="text-center">
+                <div className="flex justify-center mb-4">
+                   <QRCodeImage size={60} className="opacity-60" />
+                </div>
+                <p className="text-[9px] font-black uppercase text-stone-300 tracking-[0.4em] mb-4">Merci de votre visite</p>
               </div>
-            )}
+            </div>
 
-            {showAdminPortal === 'accounting' && (
-              <div className="max-w-4xl mx-auto space-y-12">
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="p-10 bg-stone-900 text-white rounded-[2.5rem] text-center border-b-4 border-orange-600 shadow-xl">
-                       <p className="text-[10px] font-black uppercase text-stone-500 mb-2">Total Commandes</p>
-                       <p className="text-4xl font-serif italic text-orange-400 font-bold">{stats.total.toLocaleString()} F</p>
-                    </div>
-                    <div className="p-10 bg-green-50 rounded-[2.5rem] text-center border border-green-100">
-                       <p className="text-[10px] font-black uppercase text-green-500 mb-2">Total Encaissé</p>
-                       <p className="text-4xl font-serif italic text-green-700 font-bold">{stats.paid.toLocaleString()} F</p>
-                    </div>
-                    <div className="p-10 bg-orange-50 rounded-[2.5rem] text-center border border-orange-100">
-                       <p className="text-[10px] font-black uppercase text-orange-500 mb-2">Restant à Percevoir</p>
-                       <p className="text-4xl font-serif italic text-orange-700 font-bold">{stats.pending.toLocaleString()} F</p>
-                    </div>
-                 </div>
-                 <div className="bg-white border rounded-[2.5rem] p-10">
-                    <h4 className="text-xl font-serif font-bold italic mb-6">Répartition par plat</h4>
-                    <div className="space-y-4">
-                       {Array.from(new Set(orders.map(o => o.dishName))).map(dish => {
-                          const dishTotal = orders.filter(o => o.dishName === dish).reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
-                          const percentage = (dishTotal / stats.total) * 100 || 0;
-                          return (
-                            <div key={dish} className="space-y-1">
-                               <div className="flex justify-between text-xs font-bold uppercase">
-                                  <span>{dish}</span>
-                                  <span>{dishTotal.toLocaleString()} F</span>
-                               </div>
-                               <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-orange-600 rounded-full" style={{ width: `${percentage}%` }}></div>
-                               </div>
-                            </div>
-                          );
-                       })}
-                    </div>
-                 </div>
-              </div>
-            )}
+            <div className="mt-10 flex gap-4 no-print">
+              <button 
+                onClick={handlePrint} 
+                className="flex-1 bg-stone-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-600 transition shadow-xl"
+              >
+                Imprimer / PDF
+              </button>
+              <button 
+                onClick={() => setSelectedInvoice(null)} 
+                className="flex-1 bg-stone-50 text-stone-400 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-stone-100 transition"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-            {showAdminPortal === 'menu_manager' && (
-              <div className="max-w-5xl mx-auto space-y-10">
-                 <div className="flex justify-between items-center bg-stone-50 p-8 rounded-[2rem] border">
-                    <h3 className="text-2xl font-serif font-bold italic">Gestion de la Carte</h3>
-                    <button onClick={addDish} className="bg-stone-900 text-white px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl">Nouveau Plat +</button>
-                 </div>
-                 <div className="grid gap-6">
-                    {menuItems.map(dish => (
-                      <div key={dish.id} className="p-8 border rounded-[2.5rem] bg-white shadow-sm flex flex-col md:flex-row gap-8">
-                         <img src={dish.image} className="w-full md:w-48 h-48 rounded-[2rem] object-cover bg-stone-100" alt="" />
-                         <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                            <div className="space-y-4">
-                               <div>
-                                  <label className="block text-[9px] font-black text-stone-400 uppercase mb-1">Nom du Plat</label>
-                                  <input type="text" value={dish.name} onChange={e => updateDish(dish.id, {name: e.target.value})} className="w-full p-4 bg-stone-50 rounded-2xl text-sm font-bold border border-stone-100" />
-                               </div>
-                               <div>
-                                  <label className="block text-[9px] font-black text-stone-400 uppercase mb-1">Prix (FCFA)</label>
-                                  <input type="number" value={dish.price} onChange={e => updateDish(dish.id, {price: parseInt(e.target.value) || 0})} className="w-full p-4 bg-stone-50 rounded-2xl text-sm font-bold border border-stone-100" />
-                               </div>
-                               <div>
-                                  <label className="block text-[9px] font-black text-stone-400 uppercase mb-1">Catégorie</label>
-                                  <select value={dish.category} onChange={e => updateDish(dish.id, {category: e.target.value as any})} className="w-full p-4 bg-stone-50 rounded-2xl text-sm font-bold border border-stone-100 uppercase">
-                                     <option value="entrée">Entrée</option><option value="plat">Plat</option><option value="dessert">Dessert</option><option value="boisson">Boisson</option>
-                                  </select>
-                               </div>
-                            </div>
-                            <div className="space-y-4">
-                               <div>
-                                  <label className="block text-[9px] font-black text-stone-400 uppercase mb-1">URL Image</label>
-                                  <input type="text" value={dish.image} onChange={e => updateDish(dish.id, {image: e.target.value})} className="w-full p-4 bg-stone-50 rounded-2xl text-[10px] border border-stone-100" />
-                               </div>
-                               <div>
-                                  <label className="block text-[9px] font-black text-stone-400 uppercase mb-1">Description</label>
-                                  <textarea rows={3} value={dish.description} onChange={e => updateDish(dish.id, {description: e.target.value})} className="w-full p-4 bg-stone-50 rounded-2xl text-sm border border-stone-100"></textarea>
-                               </div>
-                               <button onClick={() => deleteDish(dish.id)} className="w-full p-4 text-red-500 bg-red-50 hover:bg-red-100 rounded-2xl text-[10px] font-black uppercase">Supprimer ce plat</button>
-                            </div>
-                         </div>
-                      </div>
-                    ))}
-                 </div>
-              </div>
-            )}
+      {/* LOGIN MODAL */}
+      {showLoginModal && (
+        <div 
+          className="fixed inset-0 bg-stone-950/98 z-[500] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-orange-600"></div>
+            <h2 className="text-2xl font-bold font-serif italic text-center mb-8 text-stone-900">Console Gérant</h2>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <label htmlFor="admin-user" className="sr-only">Identifiant</label>
+              <input id="admin-user" type="text" placeholder="Identifiant" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-200 transition" required />
+              
+              <label htmlFor="admin-pass" className="sr-only">Mot de passe</label>
+              <input id="admin-pass" type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-200 transition" required />
+              
+              {loginError && <p className="text-red-500 text-[10px] text-center font-bold uppercase tracking-widest" role="alert">{loginError}</p>}
+              
+              <button type="submit" className="w-full py-5 bg-stone-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-[0.3em] hover:bg-orange-600 transition-all shadow-xl shadow-stone-900/10">Accéder</button>
+              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-stone-400 text-[9px] font-black uppercase mt-4 tracking-widest">Fermer la console</button>
+            </form>
           </div>
         </div>
       )}
