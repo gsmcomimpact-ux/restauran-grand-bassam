@@ -1,0 +1,4 @@
+
+User-agent: *
+Allow: /
+Sitemap: http://dazzling-green-mammoth.31-22-4-93.cpanel.site/sitemap.xml

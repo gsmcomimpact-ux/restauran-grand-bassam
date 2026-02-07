@@ -5,6 +5,7 @@ import MenuCard from './components/MenuCard';
 import ReservationForm from './components/ReservationForm';
 import { MENU_ITEMS as INITIAL_MENU, PHONE, LOCATION, RESTAURANT_NAME, SITE_URL } from './constants';
 import { Dish, OrderHistoryItem, Reservation } from './types';
+import { GoogleGenAI } from "@google/genai";
 
 const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => (
   <div className={`relative flex items-center justify-center ${className}`} aria-hidden="true">
@@ -29,6 +30,124 @@ const QRCodeImage: React.FC<{ size?: number, className?: string }> = ({ size = 1
   </div>
 );
 
+// --- AI Chat Assistant Component ---
+const AIChat: React.FC = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isTyping]);
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    const userMsg = input;
+    setInput('');
+    setMessages(prev => [...prev, {role: 'user', text: userMsg}]);
+    setIsTyping(true);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [...messages, {role: 'user', text: userMsg}].map(m => ({
+           role: m.role,
+           parts: [{ text: m.text }]
+        })),
+        config: {
+          systemInstruction: `Tu es l'assistant virtuel du ${RESTAURANT_NAME} à Niamey (Kouara Kano). 
+          Tu es chaleureux, accueillant et tu connais parfaitement la cuisine ivoirienne. 
+          Le menu inclut : Foutou Banane sauce Graine, Placali sauce Kpala, Attiéké Poisson Thon, Kedjenou de Poulet, Alloco, et Garba.
+          Aide les clients avec leurs questions sur le menu, les réservations et la culture ivoirienne. 
+          Réponds toujours en français avec une touche d'hospitalité ivoirienne.`,
+          temperature: 0.7,
+        }
+      });
+      
+      const aiText = response.text || "Désolé, j'ai un petit souci technique. Peux-tu reformuler ?";
+      setMessages(prev => [...prev, {role: 'model', text: aiText}]);
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, {role: 'model', text: "Oups, je n'arrive pas à me connecter. Réessaie plus tard !"}]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[999] no-print">
+      {isOpen ? (
+        <div className="bg-white w-[350px] sm:w-[400px] h-[500px] rounded-[2rem] shadow-2xl flex flex-col overflow-hidden border border-stone-100 animate-in slide-in-from-bottom-10 duration-300">
+          <div className="bg-orange-600 p-6 flex justify-between items-center text-white">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">🇨🇮</div>
+              <div>
+                <h4 className="font-bold text-sm">Assistant Bassam</h4>
+                <p className="text-[10px] opacity-80 uppercase font-black">En ligne</p>
+              </div>
+            </div>
+            <button onClick={() => setIsOpen(false)} className="hover:bg-black/10 p-2 rounded-full transition">✕</button>
+          </div>
+          
+          <div ref={scrollRef} className="flex-grow overflow-y-auto p-6 space-y-4 bg-stone-50 custom-scrollbar">
+            {messages.length === 0 && (
+              <div className="text-center py-10 text-stone-400">
+                <p className="text-xs uppercase font-black tracking-widest mb-2">Akwaaba !</p>
+                <p className="text-sm italic">Pose-moi une question sur notre menu ou la Côte d'Ivoire !</p>
+              </div>
+            )}
+            {messages.map((m, i) => (
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] p-4 rounded-2xl text-sm ${m.role === 'user' ? 'bg-orange-600 text-white shadow-lg' : 'bg-white text-stone-800 shadow-sm border border-stone-100'}`}>
+                  {m.text}
+                </div>
+              </div>
+            ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-100 flex gap-1">
+                  <div className="w-1.5 h-1.5 bg-orange-600 rounded-full animate-bounce"></div>
+                  <div className="w-1.5 h-1.5 bg-orange-600 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                  <div className="w-1.5 h-1.5 bg-orange-600 rounded-full animate-bounce [animation-delay:0.4s]"></div>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div className="p-4 bg-white border-t border-stone-100 flex gap-2">
+            <input 
+              type="text" 
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyPress={e => e.key === 'Enter' && handleSend()}
+              placeholder="Écrivez ici..."
+              className="flex-grow p-3 bg-stone-50 rounded-xl outline-none text-sm focus:ring-1 focus:ring-orange-600"
+            />
+            <button onClick={handleSend} className="bg-orange-600 text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-lg hover:bg-orange-700 transition">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button 
+          onClick={() => setIsOpen(true)}
+          className="bg-orange-600 text-white w-16 h-16 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform group"
+          aria-label="Ouvrir le chat avec l'assistant"
+        >
+          <span className="text-2xl group-hover:rotate-12 transition-transform">💬</span>
+          <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>
+        </button>
+      )}
+    </div>
+  );
+};
+
+// --- Main App Component ---
 type AdminTab = 'none' | 'dashboard' | 'orders' | 'reservations' | 'accounting' | 'menu_manager';
 
 const App: React.FC = () => {
@@ -376,6 +495,8 @@ const App: React.FC = () => {
         </footer>
       </div>
 
+      <AIChat />
+
       {/* ADMIN PORTAL */}
       {isAdminMode && showAdminPortal !== 'none' && (
         <div className="fixed inset-0 bg-stone-50 z-[300] flex flex-col no-print overflow-hidden">
@@ -688,7 +809,7 @@ const App: React.FC = () => {
       {/* MODALS: Login, Add/Edit Dish, etc. */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-stone-950/98 z-[500] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full shadow-2xl relative overflow-hidden">
+          <div className="bg-white rounded-[3rem] p-10 max-sm w-full shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-orange-600"></div>
             <h2 className="text-2xl font-bold font-serif italic text-center mb-8 text-stone-900">Console Gérant</h2>
             <form onSubmit={handleLogin} className="space-y-4">
