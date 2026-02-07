@@ -5,7 +5,7 @@ import MenuCard from './components/MenuCard';
 import ReservationForm from './components/ReservationForm';
 import { MENU_ITEMS as INITIAL_MENU, PHONE, LOCATION, RESTAURANT_NAME, SITE_URL } from './constants';
 import { Dish, OrderHistoryItem, Reservation } from './types';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => (
   <div className={`relative flex items-center justify-center ${className}`} aria-hidden="true">
@@ -169,6 +169,7 @@ const App: React.FC = () => {
     category: 'plat',
     image: ''
   });
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
 
   const [selectedInvoice, setSelectedInvoice] = useState<OrderHistoryItem | null>(null);
   const [showMasterReport, setShowMasterReport] = useState(false);
@@ -265,6 +266,67 @@ const App: React.FC = () => {
         }
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const analyzeImage = async () => {
+    const currentImg = editingDish ? editingDish.image : newDish.image;
+    if (!currentImg) return alert("Veuillez d'abord télécharger une image.");
+    
+    setIsAnalyzingImage(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const base64Data = currentImg.split(',')[1];
+      const mimeType = currentImg.split(',')[0].split(':')[1].split(';')[0];
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [
+          {
+            parts: [
+              { inlineData: { data: base64Data, mimeType } },
+              { text: "Analyse cette image de plat ivoirien. Retourne un JSON avec 'name' (nom du plat), 'description' (belle description appétissante de 2 phrases), 'category' (soit 'entrée', 'plat', 'dessert', ou 'boisson'), et 'price_estimate' (un prix suggéré en FCFA entre 2000 et 8000)." }
+            ]
+          }
+        ],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              description: { type: Type.STRING },
+              category: { type: Type.STRING },
+              price_estimate: { type: Type.NUMBER }
+            },
+            required: ["name", "description", "category", "price_estimate"]
+          }
+        }
+      });
+
+      const result = JSON.parse(response.text || '{}');
+      if (editingDish) {
+        setEditingDish({
+          ...editingDish,
+          name: result.name || editingDish.name,
+          description: result.description || editingDish.description,
+          category: (result.category?.toLowerCase() || editingDish.category) as any,
+          price: result.price_estimate || editingDish.price
+        });
+      } else {
+        setNewDish({
+          ...newDish,
+          name: result.name || '',
+          description: result.description || '',
+          category: (result.category?.toLowerCase() || 'plat') as any,
+          price: result.price_estimate || 0
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      alert("L'IA n'a pas pu analyser l'image. Veuillez remplir les champs manuellement.");
+    } finally {
+      setIsAnalyzingImage(false);
     }
   };
 
@@ -809,7 +871,7 @@ const App: React.FC = () => {
       {/* MODALS: Login, Add/Edit Dish, etc. */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-stone-950/98 z-[500] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="bg-white rounded-[3rem] p-10 max-sm w-full shadow-2xl relative overflow-hidden">
+          <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-orange-600"></div>
             <h2 className="text-2xl font-bold font-serif italic text-center mb-8 text-stone-900">Console Gérant</h2>
             <form onSubmit={handleLogin} className="space-y-4">
@@ -840,12 +902,28 @@ const App: React.FC = () => {
                   <option value="boisson">Boisson</option>
                </select>
                <textarea rows={3} required value={editingDish ? editingDish.description : newDish.description} onChange={e => editingDish ? setEditingDish({...editingDish, description: e.target.value}) : setNewDish({...newDish, description: e.target.value})} className="w-full p-4 bg-stone-50 border rounded-2xl text-sm" placeholder="Description du plat..." />
-               <div className="p-4 bg-stone-50 rounded-2xl border border-dashed flex items-center gap-4">
-                  <div className="w-16 h-16 bg-white rounded-xl overflow-hidden shadow-inner flex items-center justify-center text-stone-300 text-2xl font-bold">
-                     {(editingDish?.image || newDish.image) ? <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" alt="Prévisualisation" /> : '+'}
-                  </div>
-                  <input type="file" accept="image/*" onChange={e => handleImageUpload(e, !!editingDish)} className="text-[9px] font-black uppercase text-stone-400" />
+               
+               <div className="flex flex-col gap-4">
+                 <div className="p-4 bg-stone-50 rounded-2xl border border-dashed flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-white rounded-xl overflow-hidden shadow-inner flex items-center justify-center text-stone-300 text-2xl font-bold">
+                         {(editingDish?.image || newDish.image) ? <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" alt="Prévisualisation" /> : '+'}
+                      </div>
+                      <input type="file" accept="image/*" onChange={e => handleImageUpload(e, !!editingDish)} className="text-[9px] font-black uppercase text-stone-400" />
+                    </div>
+                    {(editingDish?.image || newDish.image) && (
+                      <button 
+                        type="button" 
+                        onClick={analyzeImage}
+                        disabled={isAnalyzingImage}
+                        className="bg-orange-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-orange-700 transition disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {isAnalyzingImage ? '...' : '✨ Analyse IA'}
+                      </button>
+                    )}
+                 </div>
                </div>
+
                <div className="flex gap-4 pt-4">
                   <button type="submit" className="flex-1 py-4 bg-orange-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Enregistrer</button>
                   <button type="button" onClick={() => { setShowAddDishModal(false); setEditingDish(null); }} className="flex-1 py-4 bg-stone-100 text-stone-400 rounded-2xl font-black uppercase text-[10px] tracking-widest">Annuler</button>
