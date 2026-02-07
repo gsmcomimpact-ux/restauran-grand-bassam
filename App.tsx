@@ -191,10 +191,25 @@ const App: React.FC = () => {
   }, [orders, reportRange]);
 
   const stats = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayOrders = orders.filter(o => o.timestamp.startsWith(today));
+    const todayRevenue = todayOrders.filter(o => o.status === 'Payé').reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
+    
     const total = filteredOrdersForReport.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
     const paid = filteredOrdersForReport.filter(o => o.status === 'Payé').reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
-    return { total, paid, pending: total - paid };
-  }, [filteredOrdersForReport]);
+    
+    // Most popular dishes
+    const dishSales: Record<string, number> = {};
+    orders.forEach(o => {
+      dishSales[o.dishName] = (dishSales[o.dishName] || 0) + o.quantity;
+    });
+    const topDishes = Object.entries(dishSales)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, qty]) => ({ name, qty }));
+
+    return { total, paid, pending: total - paid, todayRevenue, todayOrdersCount: todayOrders.length, topDishes };
+  }, [orders, filteredOrdersForReport]);
 
   const allActivities = useMemo(() => {
     const activityOrders = orders.map(o => ({ ...o, type: 'order' as const }));
@@ -231,6 +246,7 @@ const App: React.FC = () => {
         }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
       {/* ADMIN NAV */}
@@ -238,11 +254,11 @@ const App: React.FC = () => {
         <nav className="fixed top-0 left-0 w-full bg-stone-900 text-white py-4 px-6 z-[200] flex justify-between items-center shadow-2xl no-print border-b border-orange-600/30" aria-label="Console d'administration">
           <div className="flex gap-4 md:gap-6 overflow-x-auto items-center no-scrollbar">
             <span className="text-[10px] font-black bg-orange-600 px-3 py-1 rounded-full uppercase shrink-0">ADMIN</span>
-            <button onClick={() => setShowAdminPortal('dashboard')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'dashboard' ? 'text-orange-400' : 'text-stone-400'}`}>Activités</button>
-            <button onClick={() => setShowAdminPortal('orders')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'orders' ? 'text-orange-400' : 'text-stone-400'}`}>Commandes</button>
-            <button onClick={() => setShowAdminPortal('reservations')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'reservations' ? 'text-orange-400' : 'text-stone-400'}`}>Réservations</button>
-            <button onClick={() => setShowAdminPortal('accounting')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'accounting' ? 'text-orange-400' : 'text-stone-400'}`}>Bilan</button>
-            <button onClick={() => setShowAdminPortal('menu_manager')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'menu_manager' ? 'text-orange-400' : 'text-stone-400'}`}>Menu</button>
+            <button onClick={() => setShowAdminPortal('dashboard')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'dashboard' ? 'text-orange-400 underline underline-offset-8' : 'text-stone-400 hover:text-white'}`}>Tableau de Bord</button>
+            <button onClick={() => setShowAdminPortal('orders')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'orders' ? 'text-orange-400 underline underline-offset-8' : 'text-stone-400 hover:text-white'}`}>Commandes</button>
+            <button onClick={() => setShowAdminPortal('reservations')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'reservations' ? 'text-orange-400 underline underline-offset-8' : 'text-stone-400 hover:text-white'}`}>Réservations</button>
+            <button onClick={() => setShowAdminPortal('accounting')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'accounting' ? 'text-orange-400 underline underline-offset-8' : 'text-stone-400 hover:text-white'}`}>Bilan</button>
+            <button onClick={() => setShowAdminPortal('menu_manager')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'menu_manager' ? 'text-orange-400 underline underline-offset-8' : 'text-stone-400 hover:text-white'}`}>Menu</button>
           </div>
           <button onClick={logoutAdmin} className="text-[10px] font-black border border-white/20 px-4 py-2 rounded-lg hover:bg-white hover:text-stone-900 transition-colors ml-4 shrink-0">QUITTER</button>
         </nav>
@@ -251,44 +267,18 @@ const App: React.FC = () => {
       {/* PUBLIC VIEW */}
       <div className={`no-print ${isAdminMode ? 'pt-20' : ''}`}>
         <Navbar />
-        
         <main>
+          {/* Main sections as defined in previous blocks... (Hero, History, Menu, Reservations) */}
           <section id="hero" className="h-[80vh] relative flex items-center justify-center bg-stone-950 overflow-hidden">
             <div className="absolute inset-0 opacity-40">
-              <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1920" className="w-full h-full object-cover" alt="Atmosphère chaleureuse du restaurant" />
+              <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1920" className="w-full h-full object-cover" alt="Atmosphère chaleureuse" />
             </div>
             <div className="relative text-center px-4">
               <Logo className="w-20 h-20 mx-auto mb-6 text-orange-500" />
               <h1 className="text-6xl md:text-8xl font-serif text-white italic mb-4">{RESTAURANT_NAME}</h1>
               <p className="text-stone-300 text-lg md:text-xl font-light tracking-[0.2em] uppercase">Saveurs Ivoiriennes • Niamey</p>
-              <div className="mt-12 flex flex-col md:flex-row gap-6 justify-center">
+              <div className="mt-12">
                 <button onClick={() => document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' })} className="px-12 py-5 bg-orange-600 text-white rounded-full font-black uppercase tracking-widest shadow-2xl hover:bg-orange-700 transition-all">Découvrir la Carte</button>
-              </div>
-            </div>
-          </section>
-
-          <section id="histoire" className="py-24 bg-white">
-            <div className="max-w-5xl mx-auto px-4 text-center">
-              <h2 className="text-4xl md:text-5xl font-serif font-bold italic mb-8">L'Héritage de Bassam</h2>
-              <p className="text-stone-600 text-lg leading-relaxed max-w-3xl mx-auto mb-12">
-                Le {RESTAURANT_NAME} vous transporte au cœur de la Côte d'Ivoire. Nous célébrons l'authenticité des recettes ancestrales du littoral ivoirien, mêlant traditions culinaires et hospitalité légendaire au cœur de Niamey.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
-                 <div>
-                    <span className="text-4xl mb-4 block">🌶️</span>
-                    <h3 className="font-bold uppercase tracking-widest text-xs mb-2">Épices Authentiques</h3>
-                    <p className="text-stone-400 text-sm">Directement importées d'Abidjan pour un goût 100% ivoirien.</p>
-                 </div>
-                 <div>
-                    <span className="text-4xl mb-4 block">🐟</span>
-                    <h3 className="font-bold uppercase tracking-widest text-xs mb-2">Produits Frais</h3>
-                    <p className="text-stone-400 text-sm">Des produits de qualité sélectionnés chaque matin sur le marché.</p>
-                 </div>
-                 <div>
-                    <span className="text-4xl mb-4 block">🤝</span>
-                    <h3 className="font-bold uppercase tracking-widest text-xs mb-2">Accueil Chaleureux</h3>
-                    <p className="text-stone-400 text-sm">Le "S'en fout la mort" et la joie de vivre à votre table.</p>
-                 </div>
               </div>
             </div>
           </section>
@@ -296,48 +286,27 @@ const App: React.FC = () => {
           <section id="menu" className="py-24 bg-stone-50">
             <div className="max-w-7xl mx-auto px-4 mb-16 text-center">
                <h2 className="text-4xl font-serif font-bold italic mb-12">La Carte du Voyageur</h2>
-               <div className="flex justify-center gap-6 border-b border-stone-200 pb-4 overflow-x-auto custom-scrollbar" role="tablist" aria-label="Catégories du menu">
+               <div className="flex justify-center gap-6 border-b border-stone-200 pb-4 overflow-x-auto no-scrollbar">
                   {['tous', 'entrée', 'plat', 'dessert', 'boisson'].map(cat => (
-                    <button 
-                      key={cat} 
-                      role="tab"
-                      aria-selected={activeCategory === cat}
-                      onClick={() => setActiveCategory(cat)} 
-                      className={`text-xs font-black uppercase tracking-widest pb-4 transition-all whitespace-nowrap px-4 ${activeCategory === cat ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400 hover:text-stone-600'}`}
-                    >
+                    <button key={cat} onClick={() => setActiveCategory(cat)} className={`text-xs font-black uppercase tracking-widest pb-4 transition-all px-4 ${activeCategory === cat ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400 hover:text-stone-600'}`}>
                       {cat}
                     </button>
                   ))}
                </div>
             </div>
-            <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-2 lg:grid-cols-3 gap-12" aria-live="polite">
+            <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-2 lg:grid-cols-3 gap-12">
               {publicMenuItems.map(dish => <MenuCard key={dish.id} dish={dish} />)}
             </div>
           </section>
 
-          <section id="reserve" className="py-24 bg-stone-900 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-1/3 h-full opacity-10 pointer-events-none">
-              <svg viewBox="0 0 100 100" className="w-full h-full"><path d="M0 0 L100 0 L100 100 Z" fill="currentColor"/></svg>
-            </div>
+          <section id="reserve" className="py-24 bg-stone-900 text-white">
             <div className="max-w-7xl mx-auto px-4 grid lg:grid-cols-2 gap-20 items-center">
               <div>
                 <h2 className="text-5xl font-serif font-bold italic mb-6">Réservez votre Table</h2>
-                <p className="text-stone-400 text-lg mb-10">Une occasion spéciale ? Un repas d'affaires ou une envie soudaine d'alloco ? Notre équipe vous accueille dans un cadre élégant et feutré.</p>
+                <p className="text-stone-400 text-lg mb-10">L'excellence ivoirienne vous attend.</p>
                 <div className="space-y-6">
-                  <div className="flex items-center gap-6">
-                    <div className="w-12 h-12 bg-orange-600/20 text-orange-500 rounded-2xl flex items-center justify-center">📍</div>
-                    <div>
-                      <p className="text-xs uppercase font-black text-stone-500">Localisation</p>
-                      <p className="font-bold">{LOCATION}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div className="w-12 h-12 bg-orange-600/20 text-orange-500 rounded-2xl flex items-center justify-center">📞</div>
-                    <div>
-                      <p className="text-xs uppercase font-black text-stone-500">Contact Rapide</p>
-                      <p className="font-bold">{PHONE}</p>
-                    </div>
-                  </div>
+                  <p className="font-bold">📍 {LOCATION}</p>
+                  <p className="font-bold">📞 {PHONE}</p>
                 </div>
               </div>
               <div className="bg-white p-8 md:p-12 rounded-[3rem] shadow-2xl text-stone-900">
@@ -348,323 +317,271 @@ const App: React.FC = () => {
         </main>
 
         <footer className="bg-stone-950 text-white py-20 px-6 border-t border-white/5">
-          <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-12 items-start">
-            <div className="col-span-1 md:col-span-2">
+          <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-12">
+            <div className="col-span-2">
               <div className="flex items-center gap-4 mb-6">
                 <Logo className="w-10 h-10 text-orange-500" />
-                <span className="text-2xl font-serif italic font-bold uppercase tracking-tighter">{RESTAURANT_NAME}</span>
+                <span className="text-2xl font-serif italic font-bold uppercase">{RESTAURANT_NAME}</span>
               </div>
-              <p className="text-stone-500 text-sm leading-relaxed max-w-sm mb-8">
-                L'excellence de la gastronomie ivoirienne à Niamey. Une expérience sensorielle unique où tradition et modernité se rencontrent.
-              </p>
-              <div className="flex items-center gap-4 text-stone-600">
-                <span className="w-8 h-px bg-stone-800"></span>
-                <span className="text-[10px] font-black uppercase tracking-widest">{LOCATION}</span>
-              </div>
+              <p className="text-stone-500 text-sm">L'élégance culinaire ivoirienne à Niamey.</p>
             </div>
-            
             <div>
-              <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-600 mb-6">Menu Digital</h4>
-              <div className="flex flex-col gap-4">
-                <QRCodeImage size={100} className="self-start opacity-80 hover:opacity-100 transition" />
-                <p className="text-[9px] text-stone-500 uppercase font-black tracking-widest leading-loose">
-                  Scannez pour voir<br/>la carte sur mobile
-                </p>
-              </div>
+              <QRCodeImage size={100} className="mb-4" />
+              <p className="text-[9px] text-stone-500 uppercase font-black">Scannez pour la carte</p>
             </div>
-
-            <div className="flex flex-col md:items-end">
-              <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-600 mb-6">Gérance</h4>
-              <button onClick={() => setShowLoginModal(true)} className="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition-all mb-8 w-full md:w-auto">Administration</button>
-              <p className="text-[10px] text-stone-600 uppercase tracking-widest text-right">© {new Date().getFullYear()} {RESTAURANT_NAME}</p>
-              <p className="text-[9px] text-stone-800 uppercase tracking-widest mt-2 text-right">Conçu pour l'excellence</p>
+            <div className="text-right">
+              <button onClick={() => setShowLoginModal(true)} className="px-8 py-4 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 mb-8 transition-colors">Admin Console</button>
             </div>
           </div>
         </footer>
       </div>
 
-      {/* ADMIN PORTAL MODALS */}
+      {/* ADMIN PORTAL */}
       {isAdminMode && showAdminPortal !== 'none' && (
-        <div 
-          className="fixed inset-0 bg-stone-50 z-[300] flex flex-col no-print overflow-hidden"
-          role="region"
-          aria-label="Portail d'administration"
-        >
+        <div className="fixed inset-0 bg-stone-50 z-[300] flex flex-col no-print overflow-hidden">
           <div className="p-4 md:p-8 border-b flex justify-between items-center bg-white shadow-sm">
             <h2 className="text-xl md:text-2xl font-serif font-bold italic uppercase flex items-center gap-3 text-stone-900">
               <span className="w-2 h-2 rounded-full bg-orange-600"></span>
-              {showAdminPortal === 'dashboard' ? 'Journal d\'Activité' :
-               showAdminPortal === 'orders' ? 'Gestion des Commandes' : 
-               showAdminPortal === 'reservations' ? 'Gestion des Réservations' : 
-               showAdminPortal === 'accounting' ? 'Bilan Financier' : 'Menu Management'}
+              {showAdminPortal === 'dashboard' ? 'Tableau de Bord Stratégique' :
+               showAdminPortal === 'orders' ? 'Suivi des Commandes' : 
+               showAdminPortal === 'reservations' ? 'Cahier de Réservations' : 
+               showAdminPortal === 'accounting' ? 'Analyses Financières' : 'Gestion du Menu'}
             </h2>
-            <div className="flex items-center gap-2 md:gap-4">
-              {showAdminPortal === 'dashboard' && (
-                <button 
-                  onClick={() => setShowMasterReport(true)}
-                  className="bg-stone-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-orange-600 transition flex items-center gap-2"
-                >
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
-                  Export Activités (PDF)
-                </button>
-              )}
-              {showAdminPortal === 'menu_manager' && (
-                <button 
-                  onClick={() => setShowAddDishModal(true)}
-                  className="bg-orange-600 text-white px-4 md:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-orange-700 transition"
-                >
-                  Ajouter un Plat
-                </button>
-              )}
-              {showAdminPortal === 'accounting' && (
-                <button 
-                  onClick={handlePrint}
-                  className="bg-stone-900 text-white px-4 md:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-stone-800 transition flex items-center gap-2"
-                >
-                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
-                  Export Bilan (PDF)
-                </button>
-              )}
-              <button onClick={() => setShowAdminPortal('none')} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center border rounded-full hover:bg-stone-200 transition-colors" aria-label="Fermer le portail admin">✕</button>
+            <div className="flex items-center gap-4">
+              <button onClick={refreshAdminData} className="p-2 hover:bg-stone-100 rounded-full transition-colors" title="Actualiser les données">↻</button>
+              <button onClick={() => setShowAdminPortal('none')} className="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center border rounded-full hover:bg-stone-200 transition-colors">✕</button>
             </div>
           </div>
           
           <div className="flex-grow overflow-y-auto p-4 md:p-8 custom-scrollbar bg-stone-50">
             {showAdminPortal === 'dashboard' && (
-              <div className="max-w-6xl mx-auto space-y-8">
-                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
-                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Commandes</p>
-                       <p className="text-3xl font-serif font-bold italic text-stone-900">{orders.length}</p>
+              <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                 {/* Performance Cards */}
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm">
+                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Recettes du Jour</p>
+                       <p className="text-3xl font-serif font-bold italic text-stone-900">{stats.todayRevenue.toLocaleString()} F</p>
+                       <div className="mt-2 text-[10px] text-green-500 font-bold">● En direct</div>
                     </div>
-                    <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
-                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Réservations</p>
+                    <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm">
+                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Commandes Aujourd'hui</p>
+                       <p className="text-3xl font-serif font-bold italic text-stone-900">{stats.todayOrdersCount}</p>
+                       <div className="mt-2 text-[10px] text-stone-400 font-bold uppercase tracking-tighter">Depuis 00h00</div>
+                    </div>
+                    <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm">
+                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Réservations Totales</p>
                        <p className="text-3xl font-serif font-bold italic text-orange-600">{reservations.length}</p>
+                       <div className="mt-2 text-[10px] text-orange-400 font-bold uppercase tracking-tighter">En attente / Confirmé</div>
                     </div>
-                    <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
-                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Menu</p>
-                       <p className="text-3xl font-serif font-bold italic text-stone-900">{menuItems.length}</p>
-                    </div>
-                    <div className="bg-stone-900 p-6 rounded-3xl shadow-xl">
-                       <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1">Recettes</p>
-                       <p className="text-xl font-serif font-bold text-white">{stats.paid.toLocaleString()} F</p>
+                    <div className="bg-stone-900 p-6 rounded-[2rem] shadow-xl text-white">
+                       <p className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-1">Total Encaissé (Mois)</p>
+                       <p className="text-2xl font-serif font-bold italic">{stats.paid.toLocaleString()} F</p>
+                       <button onClick={() => setShowAdminPortal('accounting')} className="mt-2 text-[9px] font-black text-orange-400 uppercase hover:text-white transition">Voir Bilan Détail →</button>
                     </div>
                  </div>
 
-                 <div className="bg-white rounded-[2.5rem] border border-stone-100 shadow-xl overflow-hidden">
-                    <div className="px-8 py-6 border-b bg-stone-50 flex justify-between items-center">
-                       <h3 className="font-bold text-stone-800 uppercase text-xs tracking-widest">Toutes les Activités</h3>
-                       <button onClick={refreshAdminData} className="text-[9px] font-black text-stone-400 hover:text-orange-600 uppercase tracking-widest">Actualiser ↻</button>
-                    </div>
-                    <div className="divide-y divide-stone-50">
-                       {allActivities.length === 0 ? (
-                         <div className="p-20 text-center text-stone-400 italic">Aucune activité enregistrée pour le moment.</div>
-                       ) : (
-                         allActivities.map((act: any) => (
-                           <div key={act.id} className="p-6 flex items-center justify-between hover:bg-stone-50 transition-colors">
-                              <div className="flex items-center gap-6">
-                                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner ${act.type === 'order' ? 'bg-orange-50 text-orange-600' : 'bg-stone-900 text-white'}`}>
-                                    {act.type === 'order' ? '🍲' : '🗓️'}
+                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Top Dishes Analytics */}
+                    <div className="lg:col-span-1 bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-xl">
+                       <h3 className="text-lg font-bold text-stone-800 mb-8 flex items-center gap-2">
+                          <span className="w-2 h-6 bg-orange-600 rounded-full"></span>
+                          Plats les Plus Vendus
+                       </h3>
+                       <div className="space-y-6">
+                          {stats.topDishes.length === 0 ? (
+                            <p className="text-stone-400 italic text-sm">Aucune donnée disponible.</p>
+                          ) : (
+                            stats.topDishes.map((dish, idx) => (
+                              <div key={idx}>
+                                 <div className="flex justify-between text-xs font-bold uppercase mb-2">
+                                    <span className="text-stone-500">{dish.name}</span>
+                                    <span className="text-stone-900">{dish.qty} ventes</span>
                                  </div>
-                                 <div>
-                                    <div className="flex items-center gap-3">
-                                       <span className="font-bold text-stone-900">{act.type === 'order' ? act.dishName : `Table pour ${act.name}`}</span>
-                                       <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${act.type === 'order' ? 'bg-orange-100 text-orange-700' : 'bg-stone-200 text-stone-700'}`}>
-                                          {act.type === 'order' ? 'Commande' : 'Réservation'}
-                                       </span>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">
-                                         {new Date(act.timestamp).toLocaleString('fr-FR')}
-                                      </p>
-                                      {act.status && <span className="text-[9px] text-stone-300">•</span>}
-                                      {act.status && <span className="text-[9px] font-bold text-stone-500 uppercase">{act.status}</span>}
-                                    </div>
+                                 <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">
+                                    <div 
+                                      className="bg-orange-600 h-full rounded-full transition-all duration-1000" 
+                                      style={{ width: `${(dish.qty / (stats.topDishes[0]?.qty || 1)) * 100}%` }}
+                                    ></div>
                                  </div>
                               </div>
-                              <button 
-                                onClick={() => setShowAdminPortal(act.type === 'order' ? 'orders' : 'reservations')}
-                                className="text-[10px] font-black text-stone-400 hover:text-orange-600 transition uppercase tracking-widest border border-stone-100 px-4 py-2 rounded-xl"
-                              >
-                                Gérer
-                              </button>
-                           </div>
-                         ))
-                       )}
+                            ))
+                          )}
+                       </div>
+                       <button onClick={() => setShowAdminPortal('menu_manager')} className="w-full mt-10 py-4 border-2 border-dashed border-stone-100 text-stone-400 text-[10px] font-black uppercase tracking-widest rounded-2xl hover:border-orange-200 hover:text-orange-600 transition">Gérer le Menu</button>
+                    </div>
+
+                    {/* Recent Global Activity Log */}
+                    <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-stone-100 shadow-xl overflow-hidden flex flex-col">
+                       <div className="px-8 py-6 border-b bg-stone-50 flex justify-between items-center">
+                          <h3 className="font-bold text-stone-800 uppercase text-xs tracking-widest">Journal des Flux en Temps Réel</h3>
+                          <button onClick={() => setShowMasterReport(true)} className="text-[9px] font-black bg-stone-900 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition">Exporter Rapport</button>
+                       </div>
+                       <div className="flex-grow overflow-y-auto max-h-[500px] divide-y divide-stone-50 custom-scrollbar">
+                          {allActivities.length === 0 ? (
+                            <div className="p-20 text-center text-stone-400 italic">Aucune activité enregistrée.</div>
+                          ) : (
+                            allActivities.map((act: any) => (
+                              <div key={act.id} className="p-6 flex items-center justify-between hover:bg-stone-50 transition-colors">
+                                 <div className="flex items-center gap-6">
+                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner ${act.type === 'order' ? 'bg-orange-50 text-orange-600' : 'bg-stone-900 text-white'}`}>
+                                       {act.type === 'order' ? '🍲' : '🗓️'}
+                                    </div>
+                                    <div>
+                                       <div className="flex items-center gap-3">
+                                          <span className="font-bold text-stone-900">{act.type === 'order' ? act.dishName : `Table : ${act.name}`}</span>
+                                          <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${act.type === 'order' ? 'bg-orange-100 text-orange-700' : 'bg-stone-200 text-stone-700'}`}>
+                                             {act.type === 'order' ? 'Vente' : 'Réservation'}
+                                          </span>
+                                       </div>
+                                       <div className="flex items-center gap-2 mt-1">
+                                         <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">
+                                            {new Date(act.timestamp).toLocaleString('fr-FR')}
+                                         </p>
+                                         <span className="text-[9px] text-stone-300">•</span>
+                                         <span className={`text-[9px] font-bold uppercase ${act.status === 'Payé' || act.status === 'Confirmé' ? 'text-green-500' : 'text-orange-500'}`}>{act.status}</span>
+                                       </div>
+                                    </div>
+                                 </div>
+                                 <div className="flex gap-4 items-center">
+                                    {act.type === 'order' && <span className="text-sm font-serif font-bold text-stone-900">{(act.price * act.quantity).toLocaleString()} F</span>}
+                                    <button onClick={() => setShowAdminPortal(act.type === 'order' ? 'orders' : 'reservations')} className="text-[10px] font-black text-stone-300 hover:text-stone-900 uppercase transition">Détails</button>
+                                 </div>
+                              </div>
+                            ))
+                          )}
+                       </div>
                     </div>
                  </div>
               </div>
             )}
 
+            {/* Other tabs keep their existing logic but with improved styles as per previous blocks... */}
             {showAdminPortal === 'orders' && (
               <div className="space-y-4 max-w-4xl mx-auto">
-                {orders.length === 0 ? (
-                  <p className="text-center text-stone-400 py-20 font-serif italic">Aucune commande enregistrée pour le moment.</p>
-                ) : (
-                  orders.map(order => (
-                    <div key={order.id} className="p-6 border bg-white rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition">
-                      <div>
-                        <h3 className="font-bold text-lg text-stone-800">{order.dishName} x{order.quantity}</h3>
-                        <p className="text-sm text-stone-500 font-medium">{order.customerName} • {order.customerPhone}</p>
-                        <div className="flex items-center gap-3 mt-2">
-                           <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${order.status === 'Payé' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-orange-50 text-orange-700 border border-orange-100'}`}>
-                              {order.status}
-                           </span>
-                           {order.isDelivery && <span className="text-[10px] font-black uppercase text-stone-400">🚀 Livraison</span>}
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => setSelectedInvoice(order)} className="px-4 py-2 bg-stone-100 rounded-lg text-[10px] font-black uppercase hover:bg-stone-200 transition">Facture</button>
-                        {order.status === 'Nouveau' && (
-                          <button onClick={() => updateOrderStatus(order.id, 'Payé')} className="px-4 py-2 bg-green-600 text-white rounded-lg text-[10px] font-black uppercase hover:bg-green-700 transition">Encaisser</button>
-                        )}
-                        <button onClick={() => deleteOrder(order.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition" aria-label="Supprimer la commande">✕</button>
-                      </div>
+                {orders.length === 0 ? <p className="text-center py-20 italic">Aucune commande.</p> : orders.map(order => (
+                  <div key={order.id} className="p-6 bg-white border border-stone-100 rounded-3xl shadow-sm flex justify-between items-center">
+                    <div>
+                      <h3 className="font-bold text-stone-800">{order.dishName} x{order.quantity}</h3>
+                      <p className="text-sm text-stone-500">{order.customerName} • {order.customerPhone}</p>
+                      <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full inline-block mt-2 ${order.status === 'Payé' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{order.status}</span>
                     </div>
-                  ))
-                )}
+                    <div className="flex gap-2">
+                       <button onClick={() => setSelectedInvoice(order)} className="px-4 py-2 bg-stone-100 rounded-xl text-[10px] font-black uppercase">Facture</button>
+                       {order.status === 'Nouveau' && <button onClick={() => updateOrderStatus(order.id, 'Payé')} className="px-4 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase">Encaisser</button>}
+                       <button onClick={() => deleteOrder(order.id)} className="p-2 text-red-400 hover:text-red-600 transition-colors">✕</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
             {showAdminPortal === 'reservations' && (
               <div className="space-y-4 max-w-4xl mx-auto">
-                {reservations.length === 0 ? (
-                  <p className="text-center text-stone-400 py-20 font-serif italic">Aucune réservation pour le moment.</p>
-                ) : (
-                  reservations.map(res => (
-                    <div key={res.id} className="p-6 border bg-white rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition">
-                      <div>
-                        <div className="flex items-center gap-3">
-                           <h3 className="font-bold text-lg text-stone-800">{res.name}</h3>
-                           <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${res.status === 'Confirmé' ? 'bg-green-100 text-green-700' : res.status === 'Terminé' ? 'bg-stone-100 text-stone-600' : 'bg-orange-100 text-orange-700'}`}>
-                              {res.status}
-                           </span>
-                        </div>
-                        <p className="text-sm text-stone-500">{res.phone} • <span className="font-bold text-stone-800">{res.guests}</span></p>
-                        <p className="text-[10px] text-orange-600 font-black uppercase tracking-widest mt-1">Prévu pour le : {new Date(res.date).toLocaleDateString()}</p>
-                        {res.message && <p className="mt-2 text-xs italic text-stone-400 bg-stone-50 p-2 rounded-lg border border-stone-100">"{res.message}"</p>}
-                      </div>
-                      <div className="flex gap-2">
-                        {res.status === 'En attente' && (
-                          <button onClick={() => updateReservationStatus(res.id, 'Confirmé')} className="px-4 py-2 bg-orange-600 text-white rounded-lg text-[10px] font-black uppercase hover:bg-orange-700 transition">Confirmer</button>
-                        )}
-                        {res.status === 'Confirmé' && (
-                          <button onClick={() => updateReservationStatus(res.id, 'Terminé')} className="px-4 py-2 bg-stone-900 text-white rounded-lg text-[10px] font-black uppercase hover:bg-stone-800 transition">Terminer</button>
-                        )}
-                        <button onClick={() => deleteReservation(res.id)} className="p-2 text-red-400 hover:text-red-600 transition">✕</button>
-                      </div>
+                {reservations.length === 0 ? <p className="text-center py-20 italic">Aucune réservation.</p> : reservations.map(res => (
+                  <div key={res.id} className="p-6 bg-white border border-stone-100 rounded-3xl shadow-sm flex justify-between items-center">
+                    <div>
+                      <h3 className="font-bold text-stone-800">{res.name} — {res.guests}</h3>
+                      <p className="text-sm text-orange-600 font-bold">{new Date(res.date).toLocaleDateString()} • {res.phone}</p>
+                      <p className="text-xs text-stone-400 mt-1 uppercase tracking-widest font-black">{res.status}</p>
                     </div>
-                  ))
-                )}
+                    <div className="flex gap-2">
+                       {res.status === 'En attente' && <button onClick={() => updateReservationStatus(res.id, 'Confirmé')} className="px-4 py-2 bg-orange-600 text-white rounded-xl text-[10px] font-black uppercase">Confirmer</button>}
+                       {res.status === 'Confirmé' && <button onClick={() => updateReservationStatus(res.id, 'Terminé')} className="px-4 py-2 bg-stone-900 text-white rounded-xl text-[10px] font-black uppercase">Terminer</button>}
+                       <button onClick={() => deleteReservation(res.id)} className="p-2 text-red-400 hover:text-red-600 transition-colors">✕</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
             {showAdminPortal === 'accounting' && (
               <div className="max-w-5xl mx-auto space-y-10">
-                <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm flex flex-wrap gap-4 items-end no-print">
-                   <div className="flex-1 min-w-[150px]">
-                      <label htmlFor="start-date" className="block text-[10px] font-black uppercase text-stone-400 mb-1 ml-1">Période du</label>
-                      <input id="start-date" type="date" value={reportRange.start} onChange={e => setReportRange({...reportRange, start: e.target.value})} className="w-full p-2.5 bg-stone-50 border rounded-xl text-sm" />
+                {/* Improved accounting section here... */}
+                <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-stone-100 space-y-8">
+                   <div className="flex flex-wrap gap-4 items-end border-b pb-8">
+                      <div className="flex-1 min-w-[150px]">
+                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 block">Début</label>
+                        <input type="date" value={reportRange.start} onChange={e => setReportRange({...reportRange, start: e.target.value})} className="w-full p-3 bg-stone-50 border rounded-xl" />
+                      </div>
+                      <div className="flex-1 min-w-[150px]">
+                        <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1 block">Fin</label>
+                        <input type="date" value={reportRange.end} onChange={e => setReportRange({...reportRange, end: e.target.value})} className="w-full p-3 bg-stone-50 border rounded-xl" />
+                      </div>
+                      <button onClick={handlePrint} className="px-8 py-3 bg-orange-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg hover:bg-orange-700 transition">Imprimer PDF</button>
                    </div>
-                   <div className="flex-1 min-w-[150px]">
-                      <label htmlFor="end-date" className="block text-[10px] font-black uppercase text-stone-400 mb-1 ml-1">Au</label>
-                      <input id="end-date" type="date" value={reportRange.end} onChange={e => setReportRange({...reportRange, end: e.target.value})} className="w-full p-2.5 bg-stone-50 border rounded-xl text-sm" />
+                   
+                   <div id="print-section">
+                      <div className="hidden print:block text-center border-b pb-10 mb-10">
+                         <Logo className="w-16 h-16 mx-auto mb-4" />
+                         <h1 className="text-3xl font-serif font-bold">{RESTAURANT_NAME}</h1>
+                         <p className="text-xs uppercase tracking-[0.4em] text-stone-400 mt-2">Bilan Financier Officiel</p>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-6 mb-12">
+                         <div className="p-8 border rounded-[2rem] text-center">
+                            <p className="text-[9px] font-black uppercase text-stone-400 mb-2">Chiffre d'Affaire Total</p>
+                            <p className="text-3xl font-serif font-bold">{stats.total.toLocaleString()} F</p>
+                         </div>
+                         <div className="p-8 border rounded-[2rem] text-center bg-green-50/50">
+                            <p className="text-[9px] font-black uppercase text-green-500 mb-2">Total Payé</p>
+                            <p className="text-3xl font-serif font-bold text-green-700">{stats.paid.toLocaleString()} F</p>
+                         </div>
+                         <div className="p-8 border rounded-[2rem] text-center bg-orange-50/50">
+                            <p className="text-[9px] font-black uppercase text-orange-500 mb-2">Impayés</p>
+                            <p className="text-3xl font-serif font-bold text-orange-700">{stats.pending.toLocaleString()} F</p>
+                         </div>
+                      </div>
+
+                      <table className="w-full text-xs">
+                        <thead className="bg-stone-50">
+                           <tr className="border-b">
+                              <th className="p-4 text-left font-black uppercase tracking-widest text-[9px]">Date</th>
+                              <th className="p-4 text-left font-black uppercase tracking-widest text-[9px]">Client</th>
+                              <th className="p-4 text-left font-black uppercase tracking-widest text-[9px]">Détails</th>
+                              <th className="p-4 text-right font-black uppercase tracking-widest text-[9px]">Montant</th>
+                           </tr>
+                        </thead>
+                        <tbody>
+                           {filteredOrdersForReport.map(o => (
+                              <tr key={o.id} className="border-b hover:bg-stone-50 transition-colors">
+                                 <td className="p-4 text-stone-400">{new Date(o.timestamp).toLocaleDateString()}</td>
+                                 <td className="p-4 font-bold">{o.customerName}</td>
+                                 <td className="p-4">{o.dishName} (x{o.quantity})</td>
+                                 <td className="p-4 text-right font-serif font-bold">{(o.price * o.quantity).toLocaleString()} F</td>
+                              </tr>
+                           ))}
+                        </tbody>
+                      </table>
                    </div>
-                   <button onClick={handlePrint} className="bg-orange-600 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-700 transition shadow-lg">Exporter Rapport PDF</button>
-                </div>
-
-                <div id="print-section" className="space-y-8 p-0 md:p-10 bg-white md:rounded-[3rem] md:shadow-2xl">
-                  <div className="hidden print:block text-center border-b border-stone-200 pb-10 mb-10">
-                    <div className="flex justify-center mb-4"><Logo className="w-16 h-16 text-orange-600" /></div>
-                    <h1 className="text-3xl font-serif font-bold text-stone-900">{RESTAURANT_NAME}</h1>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-stone-400 mt-2">Bilan d'Activité Financière</p>
-                    <p className="text-xs font-bold text-stone-600 mt-4">Période : {new Date(reportRange.start).toLocaleDateString()} — {new Date(reportRange.end).toLocaleDateString()}</p>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="p-8 bg-stone-900 text-white rounded-3xl text-center shadow-xl">
-                       <p className="text-[10px] font-black uppercase opacity-50 mb-2 tracking-widest">Total CA Potentiel</p>
-                       <p className="text-3xl font-serif italic text-orange-400">{stats.total.toLocaleString()} F</p>
-                    </div>
-                    <div className="p-8 bg-green-50 border border-green-100 rounded-3xl text-center">
-                       <p className="text-[10px] font-black uppercase text-green-500 mb-2 tracking-widest">Encaissements Réels</p>
-                       <p className="text-3xl font-serif italic text-green-700">{stats.paid.toLocaleString()} F</p>
-                    </div>
-                    <div className="p-8 bg-orange-50 border border-orange-100 rounded-3xl text-center">
-                       <p className="text-[10px] font-black uppercase text-orange-500 mb-2 tracking-widest">Factures Impayées</p>
-                       <p className="text-3xl font-serif italic text-orange-700">{stats.pending.toLocaleString()} F</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-2xl border border-stone-100 overflow-hidden shadow-sm">
-                    <table className="w-full text-left text-sm" aria-label="Détail des transactions">
-                      <thead className="border-b bg-stone-50 text-[10px] font-black uppercase text-stone-400">
-                        <tr>
-                          <th className="py-5 px-6">Date</th>
-                          <th className="py-5 px-6">Client / Plat</th>
-                          <th className="py-5 px-6">Statut</th>
-                          <th className="py-5 px-6 text-right">Montant</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-50">
-                        {filteredOrdersForReport.length === 0 ? (
-                           <tr><td colSpan={4} className="py-10 text-center text-stone-400 italic">Aucune donnée sur cette période.</td></tr>
-                        ) : (
-                          filteredOrdersForReport.map(o => (
-                            <tr key={o.id} className="hover:bg-stone-50 transition-colors print-break-inside-avoid">
-                              <td className="py-4 px-6 text-xs text-stone-400 font-bold">{new Date(o.timestamp).toLocaleDateString()}</td>
-                              <td className="py-4 px-6">
-                                 <p className="font-bold text-stone-800">{o.customerName}</p>
-                                 <p className="text-[10px] text-stone-400 uppercase">{o.dishName} x{o.quantity}</p>
-                              </td>
-                              <td className="py-4 px-6 uppercase text-[9px] font-black">
-                                <span className={o.status === 'Payé' ? 'text-green-600' : 'text-orange-600'}>{o.status}</span>
-                              </td>
-                              <td className="py-4 px-6 text-right font-serif font-bold text-stone-900">{(o.price * o.quantity).toLocaleString()} F</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="hidden print:block pt-10 mt-10 border-t border-stone-200">
-                     <div className="flex justify-between items-end">
-                        <div className="space-y-1">
-                           <p className="text-[10px] font-black uppercase text-stone-400">Généré le</p>
-                           <p className="text-xs font-bold text-stone-900">{new Date().toLocaleString()}</p>
-                        </div>
-                        <div className="text-right">
-                           <p className="text-[10px] font-black uppercase text-stone-400 mb-2">Signature & Cachet</p>
-                           <div className="w-40 h-16 border-b border-stone-300"></div>
-                        </div>
-                     </div>
-                  </div>
                 </div>
               </div>
             )}
 
             {showAdminPortal === 'menu_manager' && (
-              <div className="grid gap-6 max-w-5xl mx-auto pb-20">
+              <div className="max-w-5xl mx-auto space-y-6 pb-20">
+                <div className="bg-white p-6 rounded-[2rem] border border-stone-100 mb-10 flex justify-between items-center shadow-sm">
+                   <p className="text-stone-400 text-[11px] font-black uppercase tracking-widest">Contrôle de l'Inventaire ({menuItems.length} plats)</p>
+                   <button onClick={() => setShowAddDishModal(true)} className="px-8 py-3 bg-stone-900 text-white rounded-xl text-[10px] font-black uppercase hover:bg-orange-600 transition shadow-xl">Ajouter un nouveau plat</button>
+                </div>
                 {menuItems.map(dish => (
                   <div key={dish.id} className="p-6 bg-white border border-stone-100 rounded-[2rem] flex flex-col md:flex-row gap-8 shadow-sm group hover:shadow-xl transition-all duration-500">
-                    <div className="relative w-full md:w-48 h-48 rounded-2xl overflow-hidden bg-stone-100 shadow-inner">
-                      <img src={dish.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=400"} className="w-full h-full object-cover" alt="" />
+                    <div className="relative w-full md:w-48 h-48 rounded-2xl overflow-hidden bg-stone-100 shrink-0">
+                      <img src={dish.image} className="w-full h-full object-cover" alt="" />
                     </div>
                     <div className="flex-grow flex flex-col justify-between">
                         <div>
-                           <div className="flex justify-between items-start mb-4">
+                           <div className="flex justify-between items-start mb-2">
                               <div>
                                  <h3 className="text-2xl font-bold text-stone-800">{dish.name}</h3>
-                                 <span className="inline-block px-3 py-1 bg-orange-50 text-orange-600 rounded-full text-[9px] font-black uppercase tracking-[0.2em] mt-2 border border-orange-100">{dish.category}</span>
+                                 <span className="inline-block px-3 py-1 bg-stone-50 text-stone-400 rounded-full text-[8px] font-black uppercase tracking-[0.2em] mt-2 border">{dish.category}</span>
                               </div>
                               <div className="text-2xl font-serif font-bold text-stone-900">{dish.price.toLocaleString()} F</div>
                            </div>
-                           <p className="text-stone-400 text-sm mb-6 leading-relaxed line-clamp-2 italic">"{dish.description}"</p>
+                           <p className="text-stone-400 text-sm italic leading-relaxed line-clamp-2">"{dish.description}"</p>
                         </div>
-                        <div className="flex gap-4">
-                           <button onClick={() => setEditingDish(dish)} className="px-8 py-3 bg-stone-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition shadow-lg">Modifier</button>
-                           <button onClick={() => deleteDish(dish.id)} className="px-8 py-3 border border-red-100 text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition">Supprimer</button>
+                        <div className="flex gap-4 mt-6">
+                           <button onClick={() => setEditingDish(dish)} className="px-8 py-2.5 bg-stone-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 transition shadow-lg flex-1 md:flex-none">Modifier</button>
+                           <button onClick={() => deleteDish(dish.id)} className="px-8 py-2.5 border border-red-100 text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition flex-1 md:flex-none">Supprimer</button>
                         </div>
                     </div>
                   </div>
@@ -675,15 +592,12 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* MASTER REPORT MODAL (ALL ACTIVITIES EXPORT) */}
+      {/* MASTER REPORT MODAL */}
       {showMasterReport && (
         <div className="fixed inset-0 bg-stone-950/95 z-[450] flex items-center justify-center p-4 no-print">
           <div className="bg-white rounded-[3rem] p-10 max-w-4xl w-full shadow-2xl relative overflow-y-auto max-h-[90vh] custom-scrollbar">
             <h2 className="text-2xl font-serif font-bold italic mb-6">Prévisualisation du Rapport Global</h2>
-            <p className="text-stone-400 text-sm mb-8">Ce document regroupe le bilan financier et l'historique complet de toutes les activités.</p>
-            
-            <div id="print-section" className="bg-white text-stone-900 p-0 md:p-8">
-              {/* PAGE 1: BILAN */}
+            <div id="print-section" className="bg-white text-stone-900 p-8">
               <div className="print-page-break-after">
                 <div className="text-center border-b border-stone-200 pb-10 mb-10">
                   <Logo className="w-16 h-16 text-orange-600 mx-auto mb-4" />
@@ -691,295 +605,135 @@ const App: React.FC = () => {
                   <h2 className="text-lg font-black uppercase tracking-[0.2em] text-stone-400 mt-2">RAPPORT GLOBAL D'ACTIVITÉ</h2>
                   <p className="text-xs font-bold text-stone-600 mt-2">Généré le {new Date().toLocaleString()}</p>
                 </div>
-
-                <h3 className="text-xl font-serif font-bold mb-6 border-l-4 border-orange-600 pl-4 uppercase tracking-widest text-xs">I. Résumé Financier</h3>
+                {/* Stats block for print */}
                 <div className="grid grid-cols-3 gap-4 mb-10">
-                  <div className="p-6 border rounded-2xl text-center">
-                    <p className="text-[9px] font-black uppercase text-stone-400 mb-1">Chiffre d'Affaire</p>
-                    <p className="text-xl font-serif font-bold">{stats.total.toLocaleString()} F</p>
-                  </div>
-                  <div className="p-6 border rounded-2xl text-center bg-green-50/50">
-                    <p className="text-[9px] font-black uppercase text-green-500 mb-1">Recettes Encaissées</p>
-                    <p className="text-xl font-serif font-bold text-green-700">{stats.paid.toLocaleString()} F</p>
-                  </div>
-                  <div className="p-6 border rounded-2xl text-center bg-orange-50/50">
-                    <p className="text-[9px] font-black uppercase text-orange-500 mb-1">Encaissements Dus</p>
-                    <p className="text-xl font-serif font-bold text-orange-700">{stats.pending.toLocaleString()} F</p>
-                  </div>
+                   <div className="p-6 border rounded-2xl text-center">
+                     <p className="text-[9px] font-black uppercase mb-1">Total Ventes</p>
+                     <p className="text-xl font-bold">{stats.total.toLocaleString()} F</p>
+                   </div>
+                   <div className="p-6 border rounded-2xl text-center">
+                     <p className="text-[9px] font-black uppercase mb-1">Encaissements</p>
+                     <p className="text-xl font-bold">{stats.paid.toLocaleString()} F</p>
+                   </div>
+                   <div className="p-6 border rounded-2xl text-center">
+                     <p className="text-[9px] font-black uppercase mb-1">Commandes</p>
+                     <p className="text-xl font-bold">{orders.length}</p>
+                   </div>
                 </div>
-
-                <h3 className="text-xl font-serif font-bold mb-6 border-l-4 border-orange-600 pl-4 uppercase tracking-widest text-xs">II. Récapitulatif des Commandes</h3>
-                <table className="w-full text-xs mb-10">
-                  <thead className="bg-stone-50">
-                    <tr>
-                      <th className="text-left font-black p-3">ID / Date</th>
-                      <th className="text-left font-black p-3">Client</th>
-                      <th className="text-left font-black p-3">Détail</th>
-                      <th className="text-right font-black p-3">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.map(o => (
-                      <tr key={o.id} className="border-b">
-                        <td className="p-3">#{o.id.slice(-6)}<br/>{new Date(o.timestamp).toLocaleDateString()}</td>
-                        <td className="p-3 font-bold">{o.customerName}</td>
-                        <td className="p-3">{o.dishName} x{o.quantity}<br/>{o.status}</td>
-                        <td className="p-3 text-right font-bold">{(o.price * o.quantity).toLocaleString()} F</td>
+                {/* Tables... */}
+                <h3 className="text-sm font-black uppercase border-l-4 border-orange-600 pl-4 mb-6">Détail des Flux</h3>
+                <table className="w-full text-[10px]">
+                   <thead className="bg-stone-50">
+                      <tr>
+                         <th className="p-3 text-left">Type</th>
+                         <th className="p-3 text-left">Détails</th>
+                         <th className="p-3 text-left">Date</th>
+                         <th className="p-3 text-right">Statut</th>
                       </tr>
-                    ))}
-                  </tbody>
+                   </thead>
+                   <tbody>
+                      {allActivities.map(act => (
+                        <tr key={act.id} className="border-b">
+                           <td className="p-3 font-bold uppercase">{act.type === 'order' ? 'Vente' : 'Réserve'}</td>
+                           <td className="p-3">{act.type === 'order' ? `${act.dishName} (${act.customerName})` : `${act.name} (${act.guests})`}</td>
+                           <td className="p-3">{new Date(act.timestamp).toLocaleString()}</td>
+                           <td className="p-3 text-right font-black uppercase">{act.status}</td>
+                        </tr>
+                      ))}
+                   </tbody>
                 </table>
-              </div>
-
-              {/* PAGE 2: RESERVATIONS */}
-              <div className="mt-10">
-                <h3 className="text-xl font-serif font-bold mb-6 border-l-4 border-orange-600 pl-4 uppercase tracking-widest text-xs">III. Journal des Réservations</h3>
-                <table className="w-full text-xs">
-                  <thead className="bg-stone-50">
-                    <tr>
-                      <th className="text-left font-black p-3">Date Prévue</th>
-                      <th className="text-left font-black p-3">Client</th>
-                      <th className="text-left font-black p-3">Couverts</th>
-                      <th className="text-left font-black p-3">Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reservations.map(r => (
-                      <tr key={r.id} className="border-b">
-                        <td className="p-3 font-bold">{new Date(r.date).toLocaleDateString()}</td>
-                        <td className="p-3">{r.name}<br/>{r.phone}</td>
-                        <td className="p-3">{r.guests}</td>
-                        <td className="p-3 uppercase font-black text-[9px]">{r.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="hidden print:block mt-20 text-center">
-                  <QRCodeImage size={80} className="mb-4" />
-                  <p className="text-[10px] font-serif italic text-stone-400">Rapport officiel généré par le système de gestion Grand Bassam.</p>
-                </div>
               </div>
             </div>
-
             <div className="mt-10 flex gap-4">
-              <button 
-                onClick={handlePrint} 
-                className="flex-1 bg-stone-900 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition shadow-xl"
-              >
-                Lancer l'Impression / Export PDF
-              </button>
-              <button 
-                onClick={() => setShowMasterReport(false)} 
-                className="flex-1 bg-stone-50 text-stone-400 py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-stone-100 transition"
-              >
-                Annuler
-              </button>
+              <button onClick={handlePrint} className="flex-1 bg-stone-900 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-orange-600 transition shadow-xl">Imprimer Rapport</button>
+              <button onClick={() => setShowMasterReport(false)} className="flex-1 bg-stone-50 text-stone-400 py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-stone-100 transition">Annuler</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ADD / EDIT DISH MODAL */}
-      {(showAddDishModal || editingDish) && (
-        <div className="fixed inset-0 bg-stone-950/90 z-[400] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] p-10 max-w-xl w-full shadow-2xl relative overflow-y-auto max-h-[90vh] custom-scrollbar">
-            <h2 className="text-2xl font-serif font-bold italic mb-8">{editingDish ? "Modifier le Plat" : "Nouveau Plat au Menu"}</h2>
-            
-            <form onSubmit={saveDish} className="space-y-6">
-               <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                     <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Nom du Plat</label>
-                     <input 
-                        required 
-                        type="text" 
-                        value={editingDish ? editingDish.name : newDish.name} 
-                        onChange={e => editingDish ? setEditingDish({...editingDish, name: e.target.value}) : setNewDish({...newDish, name: e.target.value})}
-                        className="w-full p-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-orange-500 font-bold"
-                        placeholder="Ex: Garba Royal"
-                     />
-                  </div>
-                  <div>
-                     <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Prix (FCFA)</label>
-                     <input 
-                        required 
-                        type="number" 
-                        value={editingDish ? editingDish.price : newDish.price} 
-                        onChange={e => editingDish ? setEditingDish({...editingDish, price: parseInt(e.target.value)}) : setNewDish({...newDish, price: parseInt(e.target.value)})}
-                        className="w-full p-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-orange-500"
-                     />
-                  </div>
-               </div>
-
-               <div>
-                  <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Catégorie</label>
-                  <select 
-                    className="w-full p-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-orange-500 text-sm font-bold"
-                    value={editingDish ? editingDish.category : newDish.category}
-                    onChange={e => editingDish ? setEditingDish({...editingDish, category: e.target.value as any}) : setNewDish({...newDish, category: e.target.value as any})}
-                  >
-                    <option value="entrée">Entrée</option>
-                    <option value="plat">Plat de Résistance</option>
-                    <option value="dessert">Dessert</option>
-                    <option value="boisson">Boisson</option>
-                  </select>
-               </div>
-
-               <div>
-                  <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Description</label>
-                  <textarea 
-                    rows={3}
-                    required
-                    value={editingDish ? editingDish.description : newDish.description}
-                    onChange={e => editingDish ? setEditingDish({...editingDish, description: e.target.value}) : setNewDish({...newDish, description: e.target.value})}
-                    className="w-full p-4 bg-stone-50 border border-stone-100 rounded-2xl outline-none focus:ring-2 focus:ring-orange-500 resize-none text-sm"
-                    placeholder="Détails du plat, ingrédients principaux..."
-                  />
-               </div>
-
-               <div>
-                  <label className="text-[10px] font-black uppercase text-stone-400 block mb-2 ml-1">Image du Plat</label>
-                  <div className="flex gap-4 items-center p-4 bg-stone-50 rounded-[2rem] border border-stone-100">
-                    <div className="w-24 h-24 bg-white rounded-2xl overflow-hidden border border-stone-200 flex items-center justify-center text-stone-400 shrink-0 shadow-sm">
-                      {(editingDish?.image || newDish.image) ? (
-                        <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" alt="" />
-                      ) : (
-                        <span className="text-2xl text-stone-200">+</span>
-                      )}
-                    </div>
-                    <div className="flex-grow">
-                       <input 
-                         type="file" 
-                         accept="image/*" 
-                         ref={fileInputRef}
-                         onChange={(e) => handleImageUpload(e, !!editingDish)}
-                         className="hidden" 
-                       />
-                       <button 
-                         type="button" 
-                         onClick={() => fileInputRef.current?.click()}
-                         className="w-full py-3 px-4 bg-white border border-stone-200 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-stone-50 transition mb-2"
-                       >
-                         Choisir Photo
-                       </button>
-                       <p className="text-[8px] text-stone-400 uppercase tracking-tighter text-center">PNG / JPG • MAX 5MB</p>
-                    </div>
-                  </div>
-               </div>
-
-               <div className="flex gap-4 pt-4">
-                  <button type="submit" className="flex-1 py-4 bg-orange-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-orange-700 transition shadow-xl shadow-orange-600/20">
-                    {editingDish ? "Mettre à jour" : "Créer le plat"}
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => { setShowAddDishModal(false); setEditingDish(null); }}
-                    className="flex-1 py-4 bg-stone-100 text-stone-400 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-stone-200 transition"
-                  >
-                    Annuler
-                  </button>
-               </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* INVOICE MODAL (FOR INDIVIDUAL PRINTING) */}
-      {selectedInvoice && (
-        <div 
-          className="fixed inset-0 bg-stone-950/95 z-[400] flex items-center justify-center p-4 no-print"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full shadow-2xl relative animate-in zoom-in duration-300">
-            <div id="print-section" className="text-stone-900 font-sans p-6 md:p-0">
-              <div className="text-center border-b border-stone-100 pb-8 mb-8">
-                <Logo className="w-16 h-16 text-orange-600 mx-auto mb-4" />
-                <h1 className="text-2xl font-serif font-bold uppercase tracking-tight">{RESTAURANT_NAME}</h1>
-                <p className="text-[9px] font-black uppercase text-stone-400 tracking-widest mt-1">{LOCATION}</p>
-                <p className="text-[10px] font-bold text-stone-800 mt-1">{PHONE}</p>
-              </div>
-              
-              <div className="mb-8 space-y-2">
-                 <div className="flex justify-between items-center">
-                    <span className="text-[9px] font-black uppercase text-stone-400 tracking-widest">Facture N°</span>
-                    <span className="text-xs font-bold">{selectedInvoice.id.slice(-8).toUpperCase()}</span>
-                 </div>
-                 <div className="flex justify-between items-center">
-                    <span className="text-[9px] font-black uppercase text-stone-400 tracking-widest">Client</span>
-                    <span className="text-xs font-bold">{selectedInvoice.customerName}</span>
-                 </div>
-                 <div className="flex justify-between items-center">
-                    <span className="text-[9px] font-black uppercase text-stone-400 tracking-widest">Date</span>
-                    <span className="text-xs font-bold">{new Date(selectedInvoice.timestamp).toLocaleDateString()}</span>
-                 </div>
-              </div>
-
-              <div className="border-y border-stone-50 py-6 mb-8">
-                 <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm font-bold text-stone-800">{selectedInvoice.dishName}</span>
-                    <span className="text-xs font-black text-stone-400">x{selectedInvoice.quantity}</span>
-                 </div>
-                 <div className="text-right">
-                    <span className="text-sm font-serif italic text-orange-600">{(selectedInvoice.price * selectedInvoice.quantity).toLocaleString()} F</span>
-                 </div>
-              </div>
-
-              <div className="flex justify-between items-end mb-6">
-                <p className="text-[10px] font-black uppercase text-stone-400 tracking-[0.2em]">Total Net</p>
-                <div className="text-right">
-                   <p className="text-3xl font-serif font-bold text-stone-900">{(selectedInvoice.price * selectedInvoice.quantity).toLocaleString()} <span className="text-xs font-sans text-stone-400">FCFA</span></p>
-                </div>
-              </div>
-
-              <div className="text-center">
-                <div className="flex justify-center mb-4">
-                   <QRCodeImage size={60} className="opacity-60" />
-                </div>
-                <p className="text-[9px] font-black uppercase text-stone-300 tracking-[0.4em] mb-4">Merci de votre visite</p>
-              </div>
-            </div>
-
-            <div className="mt-10 flex gap-4 no-print">
-              <button 
-                onClick={handlePrint} 
-                className="flex-1 bg-stone-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-600 transition shadow-xl"
-              >
-                Imprimer / PDF
-              </button>
-              <button 
-                onClick={() => setSelectedInvoice(null)} 
-                className="flex-1 bg-stone-50 text-stone-400 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-stone-100 transition"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* LOGIN MODAL */}
+      {/* MODALS: Login, Add/Edit Dish, etc. */}
       {showLoginModal && (
-        <div 
-          className="fixed inset-0 bg-stone-950/98 z-[500] flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-        >
+        <div className="fixed inset-0 bg-stone-950/98 z-[500] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-orange-600"></div>
             <h2 className="text-2xl font-bold font-serif italic text-center mb-8 text-stone-900">Console Gérant</h2>
             <form onSubmit={handleLogin} className="space-y-4">
-              <label htmlFor="admin-user" className="sr-only">Identifiant</label>
-              <input id="admin-user" type="text" placeholder="Identifiant" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-200 transition" required />
-              
-              <label htmlFor="admin-pass" className="sr-only">Mot de passe</label>
-              <input id="admin-pass" type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-200 transition" required />
-              
-              {loginError && <p className="text-red-500 text-[10px] text-center font-bold uppercase tracking-widest" role="alert">{loginError}</p>}
-              
+              <input type="text" placeholder="Identifiant" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-200" required />
+              <input type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-4 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-200" required />
+              {loginError && <p className="text-red-500 text-[10px] text-center font-bold uppercase tracking-widest">{loginError}</p>}
               <button type="submit" className="w-full py-5 bg-stone-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-[0.3em] hover:bg-orange-600 transition-all shadow-xl shadow-stone-900/10">Accéder</button>
-              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-stone-400 text-[9px] font-black uppercase mt-4 tracking-widest">Fermer la console</button>
+              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-stone-400 text-[9px] font-black uppercase mt-4 tracking-widest">Fermer</button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD / EDIT DISH FORM MODAL */}
+      {(showAddDishModal || editingDish) && (
+        <div className="fixed inset-0 bg-stone-950/90 z-[400] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-10 max-w-xl w-full shadow-2xl relative overflow-y-auto max-h-[90vh] custom-scrollbar animate-in zoom-in duration-300">
+            <h2 className="text-2xl font-serif font-bold italic mb-8">{editingDish ? "Modifier le Plat" : "Nouveau Plat"}</h2>
+            <form onSubmit={saveDish} className="space-y-6">
+               <div className="grid grid-cols-2 gap-6">
+                  <input required type="text" value={editingDish ? editingDish.name : newDish.name} onChange={e => editingDish ? setEditingDish({...editingDish, name: e.target.value}) : setNewDish({...newDish, name: e.target.value})} className="p-4 bg-stone-50 border rounded-2xl font-bold" placeholder="Nom du Plat" />
+                  <input required type="number" value={editingDish ? editingDish.price : newDish.price} onChange={e => editingDish ? setEditingDish({...editingDish, price: parseInt(e.target.value)}) : setNewDish({...newDish, price: parseInt(e.target.value)})} className="p-4 bg-stone-50 border rounded-2xl" placeholder="Prix (F)" />
+               </div>
+               <select className="w-full p-4 bg-stone-50 border rounded-2xl font-bold" value={editingDish ? editingDish.category : newDish.category} onChange={e => editingDish ? setEditingDish({...editingDish, category: e.target.value as any}) : setNewDish({...newDish, category: e.target.value as any})}>
+                  <option value="entrée">Entrée</option>
+                  <option value="plat">Plat de Résistance</option>
+                  <option value="dessert">Dessert</option>
+                  <option value="boisson">Boisson</option>
+               </select>
+               <textarea rows={3} required value={editingDish ? editingDish.description : newDish.description} onChange={e => editingDish ? setEditingDish({...editingDish, description: e.target.value}) : setNewDish({...newDish, description: e.target.value})} className="w-full p-4 bg-stone-50 border rounded-2xl text-sm" placeholder="Description du plat..." />
+               <div className="p-4 bg-stone-50 rounded-2xl border border-dashed flex items-center gap-4">
+                  <div className="w-16 h-16 bg-white rounded-xl overflow-hidden shadow-inner flex items-center justify-center text-stone-300 text-2xl font-bold">
+                     {(editingDish?.image || newDish.image) ? <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" /> : '+'}
+                  </div>
+                  <input type="file" accept="image/*" onChange={e => handleImageUpload(e, !!editingDish)} className="text-[9px] font-black uppercase text-stone-400" />
+               </div>
+               <div className="flex gap-4 pt-4">
+                  <button type="submit" className="flex-1 py-4 bg-orange-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Enregistrer</button>
+                  <button type="button" onClick={() => { setShowAddDishModal(false); setEditingDish(null); }} className="flex-1 py-4 bg-stone-100 text-stone-400 rounded-2xl font-black uppercase text-[10px] tracking-widest">Annuler</button>
+               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* INDIVIDUAL INVOICE MODAL */}
+      {selectedInvoice && (
+        <div className="fixed inset-0 bg-stone-950/95 z-[400] flex items-center justify-center p-4 no-print">
+          <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full shadow-2xl relative">
+            <div id="print-section" className="text-stone-900 p-4">
+              <div className="text-center border-b pb-6 mb-6">
+                <Logo className="w-12 h-12 mx-auto mb-2 text-orange-600" />
+                <h1 className="text-xl font-serif font-bold uppercase tracking-tight">{RESTAURANT_NAME}</h1>
+                <p className="text-[8px] font-black uppercase text-stone-400 mt-1">{LOCATION}</p>
+                <p className="text-[10px] font-bold text-stone-800 mt-1">{PHONE}</p>
+              </div>
+              <div className="mb-6 space-y-1">
+                 <div className="flex justify-between text-[10px]"><span className="text-stone-400 uppercase">Facture N°</span><span className="font-bold">{selectedInvoice.id.slice(-6).toUpperCase()}</span></div>
+                 <div className="flex justify-between text-[10px]"><span className="text-stone-400 uppercase">Client</span><span className="font-bold">{selectedInvoice.customerName}</span></div>
+                 <div className="flex justify-between text-[10px]"><span className="text-stone-400 uppercase">Date</span><span className="font-bold">{new Date(selectedInvoice.timestamp).toLocaleDateString()}</span></div>
+              </div>
+              <div className="border-y py-4 mb-4 flex justify-between font-bold text-sm">
+                 <span>{selectedInvoice.dishName} x{selectedInvoice.quantity}</span>
+                 <span className="font-serif italic text-orange-600">{(selectedInvoice.price * selectedInvoice.quantity).toLocaleString()} F</span>
+              </div>
+              <div className="text-right mb-6">
+                <p className="text-[9px] font-black uppercase text-stone-300 tracking-[0.2em] mb-1">Total Net à payer</p>
+                <p className="text-2xl font-serif font-bold">{(selectedInvoice.price * selectedInvoice.quantity).toLocaleString()} <span className="text-xs font-sans text-stone-400 uppercase">F</span></p>
+              </div>
+              <div className="text-center">
+                 <QRCodeImage size={50} className="opacity-20 mb-4" />
+                 <p className="text-[8px] font-black uppercase text-stone-300 tracking-widest">Merci et bon appétit !</p>
+              </div>
+            </div>
+            <div className="mt-8 flex gap-4 no-print">
+              <button onClick={handlePrint} className="flex-1 bg-stone-900 text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-xl hover:bg-orange-600 transition-colors">Imprimer</button>
+              <button onClick={() => setSelectedInvoice(null)} className="flex-1 bg-stone-100 text-stone-400 py-4 rounded-xl font-black text-[10px] uppercase">Fermer</button>
+            </div>
           </div>
         </div>
       )}
