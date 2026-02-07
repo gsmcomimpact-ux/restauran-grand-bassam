@@ -4,7 +4,8 @@ import { Dish } from './types';
 export const RESTAURANT_NAME = "RESTAURANT GRAND BASSAM";
 export const LOCATION = "Kouara Kano, Niamey";
 export const PHONE = "+227 8877 0594"; 
-export const SITE_URL = "http://dazzling-green-mammoth.31-22-4-93.cpanel.site/";
+export const SITE_URL = "https://restauran-grand-bassam.vercel.app/";
+export const DELIVERY_FEE = 1000;
 
 export const MENU_ITEMS: Dish[] = [
   {
