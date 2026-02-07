@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Navbar from './components/Navbar';
 import MenuCard from './components/MenuCard';
 import ReservationForm from './components/ReservationForm';
-import { MENU_ITEMS as INITIAL_MENU, PHONE, LOCATION, RESTAURANT_NAME, SITE_URL, DELIVERY_FEE } from './constants';
+import { MENU_ITEMS as INITIAL_MENU, PHONE, DISPLAY_PHONE, LOCATION, RESTAURANT_NAME, SITE_URL, DELIVERY_FEE } from './constants';
 import { Dish, OrderHistoryItem, Reservation } from './types';
 import { GoogleGenAI, Type } from "@google/genai";
 // @ts-ignore
@@ -63,7 +63,6 @@ const App: React.FC = () => {
     image: ''
   });
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<OrderHistoryItem | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -134,44 +133,69 @@ const App: React.FC = () => {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        if (isEdit && editingDish) {
-          setEditingDish({ ...editingDish, image: base64 });
-        } else {
-          setNewDish({ ...newDish, image: base64 });
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   const analyzeImage = async () => {
     const currentImg = editingDish ? editingDish.image : newDish.image;
-    if (!currentImg) return alert("Télécharge d'abord une photo !");
+    if (!currentImg) return alert("Veuillez d'abord saisir un lien d'image valide.");
     setIsAnalyzingImage(true);
     try {
+      // Pour analyser une image via lien avec Gemini, il faut d'abord la convertir en base64
+      const responseImg = await fetch(currentImg);
+      const blob = await responseImg.blob();
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+      const base64String = await base64Promise;
+
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const base64Data = currentImg.split(',')[1];
-      const mimeType = currentImg.split(',')[0].split(':')[1].split(';')[0];
+      const base64Data = base64String.split(',')[1];
+      const mimeType = base64String.split(',')[0].split(':')[1].split(';')[0];
+      
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: [{ parts: [{ inlineData: { data: base64Data, mimeType } }, { text: "Identifie ce plat ivoirien. Retourne un JSON : 'name', 'description', 'category', 'price'." }] }],
-        config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, description: { type: Type.STRING }, category: { type: Type.STRING }, price: { type: Type.NUMBER } }, required: ["name", "description", "category", "price"] } }
+        contents: [{ 
+          parts: [
+            { inlineData: { data: base64Data, mimeType } }, 
+            { text: "Identifie ce plat ivoirien. Retourne un JSON strictement avec les clés : 'name', 'description', 'category', 'price' (nombre entier). La catégorie doit être l'un des suivants: 'entrée', 'plat', 'dessert', 'boisson'." }
+          ] 
+        }],
+        config: { 
+          responseMimeType: "application/json", 
+          responseSchema: { 
+            type: Type.OBJECT, 
+            properties: { 
+              name: { type: Type.STRING }, 
+              description: { type: Type.STRING }, 
+              category: { type: Type.STRING }, 
+              price: { type: Type.NUMBER } 
+            }, 
+            required: ["name", "description", "category", "price"] 
+          } 
+        }
       });
+      
       const result = JSON.parse(response.text || '{}');
       if (editingDish) {
-        setEditingDish({ ...editingDish, name: result.name || editingDish.name, description: result.description || editingDish.description, category: (result.category?.toLowerCase() || editingDish.category) as any, price: result.price || editingDish.price });
+        setEditingDish({ 
+          ...editingDish, 
+          name: result.name || editingDish.name, 
+          description: result.description || editingDish.description, 
+          category: (result.category?.toLowerCase() || editingDish.category) as any, 
+          price: result.price || editingDish.price 
+        });
       } else {
-        setNewDish({ ...newDish, name: result.name || '', description: result.description || '', category: (result.category?.toLowerCase() || 'plat') as any, price: result.price || 0 });
+        setNewDish({ 
+          ...newDish, 
+          name: result.name || '', 
+          description: result.description || '', 
+          category: (result.category?.toLowerCase() || 'plat') as any, 
+          price: result.price || 0 
+        });
       }
     } catch (error) {
       console.error(error);
-      alert("Erreur IA");
+      alert("Erreur lors de l'analyse. Assurez-vous que le lien de l'image est public et accessible (CORS).");
     } finally {
       setIsAnalyzingImage(false);
     }
@@ -209,7 +233,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Fix: Define publicMenuItems to resolve 'Cannot find name publicMenuItems' error and handle category filtering
   const publicMenuItems = useMemo(() => {
     if (activeCategory === 'tous') return menuItems;
     return menuItems.filter(item => item.category === activeCategory);
@@ -247,7 +270,7 @@ const App: React.FC = () => {
     const finalTotal = subTotal + delFee;
 
     doc.setFont("helvetica", "bold").setFontSize(14).text(RESTAURANT_NAME, 40, 15, { align: 'center' });
-    doc.setFontSize(8).setFont("helvetica", "normal").text(LOCATION, 40, 20, { align: 'center' }).text(PHONE, 40, 24, { align: 'center' });
+    doc.setFontSize(8).setFont("helvetica", "normal").text(LOCATION, 40, 20, { align: 'center' }).text(DISPLAY_PHONE, 40, 24, { align: 'center' });
     doc.line(10, 28, 70, 28);
     doc.setFont("helvetica", "bold").text(`FACTURE #GB${order.id.slice(-6)}`, 10, 35);
     doc.setFont("helvetica", "normal").text(`Date: ${new Date(order.timestamp).toLocaleDateString()}`, 10, 42);
@@ -288,14 +311,15 @@ const App: React.FC = () => {
       {/* ADMIN BAR */}
       {isAdminMode && (
         <nav className="fixed top-0 left-0 w-full bg-stone-900 text-white py-3 px-6 z-[200] flex justify-between items-center shadow-2xl no-print border-b border-orange-600/50">
-          <div className="flex gap-6 overflow-x-auto items-center">
-            <span className="text-[10px] font-black bg-orange-600 px-3 py-1 rounded-full">ADMIN</span>
-            <button onClick={() => setShowAdminPortal('dashboard')} className="text-[10px] font-bold uppercase tracking-widest">Dashboard</button>
-            <button onClick={() => setShowAdminPortal('orders')} className="text-[10px] font-bold uppercase tracking-widest">Commandes</button>
-            <button onClick={() => setShowAdminPortal('accounting')} className="text-[10px] font-bold uppercase tracking-widest">Comptabilité</button>
-            <button onClick={() => setShowAdminPortal('menu_manager')} className="text-[10px] font-bold uppercase tracking-widest">Menu</button>
+          <div className="flex gap-4 md:gap-6 overflow-x-auto items-center no-scrollbar">
+            <span className="text-[10px] font-black bg-orange-600 px-3 py-1 rounded-full shrink-0">ADMIN</span>
+            <button onClick={() => setShowAdminPortal('dashboard')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'dashboard' ? 'text-orange-400' : 'text-stone-300'}`}>Tableau de Bord</button>
+            <button onClick={() => setShowAdminPortal('orders')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'orders' ? 'text-orange-400' : 'text-stone-300'}`}>Commandes</button>
+            <button onClick={() => setShowAdminPortal('reservations')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'reservations' ? 'text-orange-400' : 'text-stone-300'}`}>Réservations</button>
+            <button onClick={() => setShowAdminPortal('accounting')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'accounting' ? 'text-orange-400' : 'text-stone-300'}`}>Comptabilité</button>
+            <button onClick={() => setShowAdminPortal('menu_manager')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'menu_manager' ? 'text-orange-400' : 'text-stone-300'}`}>Menu</button>
           </div>
-          <button onClick={logoutAdmin} className="text-[10px] font-black border border-white/20 px-4 py-2 rounded-lg hover:bg-white hover:text-stone-900 transition-colors shrink-0">DECONNEXION</button>
+          <button onClick={logoutAdmin} className="text-[10px] font-black border border-white/20 px-4 py-2 rounded-lg hover:bg-white hover:text-stone-900 transition-colors shrink-0 ml-4">DECONNEXION</button>
         </nav>
       )}
 
@@ -322,10 +346,6 @@ const App: React.FC = () => {
               <div className="relative">
                 <div className="absolute -top-10 -left-10 w-40 h-40 bg-orange-50 rounded-full -z-10"></div>
                 <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1200" className="rounded-[4rem] shadow-3xl w-full h-[600px] object-cover" alt="Histoire" />
-                <div className="absolute -bottom-8 -right-8 bg-stone-900 text-white p-10 rounded-[2rem] shadow-2xl">
-                  <p className="text-4xl font-serif italic font-bold">15+</p>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-orange-500">Années de Passion</p>
-                </div>
               </div>
               <div className="space-y-8">
                 <h2 className="text-5xl font-serif italic font-bold text-stone-900 leading-tight">Un Voyage du <span className="text-orange-600">Littoral</span> au <span className="text-orange-600">Sahel</span></h2>
@@ -336,12 +356,6 @@ const App: React.FC = () => {
                 <p className="text-stone-500 leading-relaxed text-lg">
                   Chaque Garba, chaque Kedjenou et chaque boule de Foutou est préparé selon les méthodes ancestrales, utilisant des produits frais importés directement pour garantir ce goût unique qui fait notre renommée à Niamey. Bienvenue chez vous, bienvenue au Grand Bassam.
                 </p>
-                <div className="flex items-center gap-6 pt-6">
-                  <div className="flex -space-x-4">
-                    {[1,2,3,4].map(i => <img key={i} className="w-12 h-12 rounded-full border-4 border-white object-cover" src={`https://i.pravatar.cc/150?img=${i+10}`} alt="Client" />)}
-                  </div>
-                  <p className="text-sm font-bold text-stone-400 uppercase tracking-widest">Déjà des milliers de clients conquis</p>
-                </div>
               </div>
             </div>
           </section>
@@ -352,7 +366,6 @@ const App: React.FC = () => {
                <p className="text-stone-400 uppercase tracking-[0.3em] font-black text-xs">Excellence & Authenticité</p>
             </div>
             
-            {/* Category Filter */}
             <div className="flex justify-center gap-4 mb-16 flex-wrap px-4 max-w-4xl mx-auto">
               {['tous', 'entrée', 'plat', 'dessert', 'boisson'].map(cat => (
                 <button
@@ -405,7 +418,7 @@ const App: React.FC = () => {
               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500 mb-8">Contact</h3>
               <ul className="space-y-6 text-xs">
                 <li className="flex gap-4"><span>📍</span><p className="text-stone-400">{LOCATION}</p></li>
-                <li className="flex gap-4"><span>📞</span><p className="text-stone-400">{PHONE}</p></li>
+                <li className="flex gap-4"><span>📞</span><p className="text-stone-400">{DISPLAY_PHONE}</p></li>
               </ul>
             </div>
             <div className="flex flex-col items-center md:items-end">
@@ -420,12 +433,17 @@ const App: React.FC = () => {
         </footer>
       </div>
 
-      {/* ADMIN PANELS (REDUCED FOR BREVITY BUT KEPT FUNCTIONAL) */}
+      {/* ADMIN PANELS */}
       {isAdminMode && showAdminPortal !== 'none' && (
         <div className="fixed inset-0 bg-stone-50 z-[300] flex flex-col no-print">
           <header className="p-6 border-b flex justify-between items-center bg-white shadow-sm">
-            <h2 className="text-2xl font-serif font-bold italic uppercase">{showAdminPortal}</h2>
-            <button onClick={() => setShowAdminPortal('none')} className="w-12 h-12 flex items-center justify-center border rounded-2xl">✕</button>
+            <h2 className="text-2xl font-serif font-bold italic uppercase">{
+              showAdminPortal === 'dashboard' ? 'Tableau de Bord' :
+              showAdminPortal === 'orders' ? 'Commandes Clients' :
+              showAdminPortal === 'reservations' ? 'Gestion des Réservations' :
+              showAdminPortal === 'accounting' ? 'Bilan Financier' : 'Gestion de la Carte'
+            }</h2>
+            <button onClick={() => setShowAdminPortal('none')} className="w-12 h-12 flex items-center justify-center border rounded-2xl hover:bg-stone-100 transition-colors">✕</button>
           </header>
           <div className="flex-grow overflow-y-auto p-8 bg-stone-50/50">
             {showAdminPortal === 'dashboard' && (
@@ -447,16 +465,51 @@ const App: React.FC = () => {
             
             {showAdminPortal === 'orders' && (
                <div className="space-y-4 max-w-5xl mx-auto">
-                 {orders.map(order => (
-                   <div key={order.id} className="p-6 bg-white rounded-3xl flex justify-between items-center shadow-sm">
+                 {orders.length === 0 ? <p className="text-center py-20 italic">Aucune commande.</p> : orders.map(order => (
+                   <div key={order.id} className="p-6 bg-white rounded-3xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
                      <div>
-                       <h3 className="font-bold">{order.dishName} x{order.quantity} {order.isDelivery && <span className="text-orange-600">(+1.000 F Livraison)</span>}</h3>
-                       <p className="text-xs text-stone-400">{order.customerName} • {order.customerPhone}</p>
+                       <div className="flex items-center gap-3">
+                         <h3 className="font-bold">{order.dishName} x{order.quantity}</h3>
+                         <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${order.status === 'Payé' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{order.status}</span>
+                       </div>
+                       <p className="text-xs text-stone-400 mt-1">{order.customerName} • {order.customerPhone}</p>
+                       {order.isDelivery && <p className="text-[9px] font-bold text-orange-600 mt-1 uppercase tracking-widest">🚀 Livraison : {order.address}</p>}
                      </div>
-                     <div className="flex gap-4">
-                       <button onClick={() => generateInvoicePDF(order)} className="px-4 py-2 bg-stone-100 rounded-xl text-[10px] font-black">📄 PDF</button>
-                       {order.status === 'Nouveau' && <button onClick={() => updateOrderStatus(order.id, 'Payé')} className="px-4 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black">PAYER</button>}
-                       <button onClick={() => deleteOrder(order.id)} className="text-red-300 hover:text-red-600">✕</button>
+                     <div className="flex gap-2 w-full md:w-auto">
+                       <button onClick={() => generateInvoicePDF(order)} className="flex-1 md:flex-none px-4 py-2 bg-stone-100 rounded-xl text-[10px] font-black hover:bg-stone-200">📄 FACTURE</button>
+                       {order.status === 'Nouveau' && <button onClick={() => updateOrderStatus(order.id, 'Payé')} className="flex-1 md:flex-none px-4 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black shadow-lg">PAYER</button>}
+                       <button onClick={() => deleteOrder(order.id)} className="w-10 h-10 flex items-center justify-center border border-red-50 text-red-300 hover:text-red-600 rounded-xl">✕</button>
+                     </div>
+                   </div>
+                 ))}
+               </div>
+            )}
+
+            {showAdminPortal === 'reservations' && (
+               <div className="space-y-4 max-w-5xl mx-auto">
+                 {reservations.length === 0 ? <p className="text-center py-20 italic">Aucune réservation enregistrée.</p> : reservations.map(res => (
+                   <div key={res.id} className="p-6 bg-white rounded-3xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm group">
+                     <div>
+                       <div className="flex items-center gap-3">
+                         <h3 className="font-bold text-lg">{res.name} — {res.guests}</h3>
+                         <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${
+                           res.status === 'Confirmé' ? 'bg-green-100 text-green-700' : 
+                           res.status === 'En attente' ? 'bg-orange-100 text-orange-700' : 'bg-stone-100 text-stone-400'
+                         }`}>{res.status}</span>
+                       </div>
+                       <p className="text-xs text-orange-600 font-bold mt-1">
+                         📅 {new Date(res.date).toLocaleDateString()} • 📞 {res.phone}
+                       </p>
+                       {res.message && <p className="text-xs text-stone-400 italic mt-2">"{res.message}"</p>}
+                     </div>
+                     <div className="flex gap-2 w-full md:w-auto">
+                       {res.status === 'En attente' && (
+                         <button onClick={() => updateReservationStatus(res.id, 'Confirmé')} className="flex-1 md:flex-none px-4 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black shadow-lg">CONFIRMER</button>
+                       )}
+                       {res.status === 'Confirmé' && (
+                         <button onClick={() => updateReservationStatus(res.id, 'Terminé')} className="flex-1 md:flex-none px-4 py-2 bg-stone-900 text-white rounded-xl text-[10px] font-black">TERMINER</button>
+                       )}
+                       <button onClick={() => deleteReservation(res.id)} className="w-10 h-10 flex items-center justify-center border border-red-50 text-red-300 hover:text-red-600 rounded-xl transition-colors">✕</button>
                      </div>
                    </div>
                  ))}
@@ -465,32 +518,53 @@ const App: React.FC = () => {
 
             {showAdminPortal === 'accounting' && (
               <div className="space-y-8 max-w-6xl mx-auto">
-                <div className="bg-white p-8 rounded-3xl flex flex-col md:flex-row gap-6 justify-between items-center">
+                <div className="bg-white p-8 rounded-[2.5rem] flex flex-col md:flex-row gap-6 justify-between items-center border border-stone-100">
                   <div className="flex gap-4">
-                    <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="p-2 border rounded-xl text-xs" />
-                    <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="p-2 border rounded-xl text-xs" />
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-black text-stone-400 uppercase tracking-widest ml-1">Début</label>
+                      <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="p-3 border rounded-xl text-xs font-bold bg-stone-50" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-black text-stone-400 uppercase tracking-widest ml-1">Fin</label>
+                      <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="p-3 border rounded-xl text-xs font-bold bg-stone-50" />
+                    </div>
                   </div>
-                  <button onClick={generateReportPDF} className="px-8 py-3 bg-stone-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest">Exporter Bilan PDF</button>
+                  <button onClick={generateReportPDF} className="w-full md:w-auto px-10 py-4 bg-stone-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-orange-600 transition-all">Exporter Bilan PDF</button>
                 </div>
-                <div className="bg-white p-8 rounded-3xl shadow-sm">
-                   <p className="text-sm font-black uppercase mb-6">Total Encaissé Période : {formatPrice(stats.periodRevenue)} FCFA</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-stone-100">
+                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-4">Total Encaissé Période</p>
+                     <p className="text-4xl font-serif font-bold text-green-600">{formatPrice(stats.periodRevenue)} FCFA</p>
+                  </div>
+                  <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-stone-100">
+                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-4">CA en attente de paiement</p>
+                     <p className="text-4xl font-serif font-bold text-orange-600">{formatPrice(stats.unpaidRevenue)} FCFA</p>
+                  </div>
                 </div>
               </div>
             )}
 
             {showAdminPortal === 'menu_manager' && (
               <div className="max-w-5xl mx-auto space-y-6">
-                 <button onClick={() => setShowAddDishModal(true)} className="px-8 py-4 bg-orange-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">Ajouter un Plat</button>
+                 <div className="flex justify-between items-center mb-8">
+                   <h3 className="text-xl font-bold font-serif italic">Gestion des Produits</h3>
+                   <button onClick={() => setShowAddDishModal(true)} className="px-8 py-4 bg-orange-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">Ajouter un Plat</button>
+                 </div>
                  <div className="grid gap-6">
                    {menuItems.map(dish => (
-                     <div key={dish.id} className="p-6 bg-white rounded-[2rem] flex gap-6 shadow-sm">
-                        <img src={dish.image} className="w-32 h-32 object-cover rounded-2xl" alt={dish.name} />
-                        <div className="flex-grow">
-                          <h4 className="text-xl font-bold">{dish.name}</h4>
-                          <p className="text-orange-600 font-bold">{formatPrice(dish.price)} F</p>
-                          <div className="flex gap-4 mt-4">
-                            <button onClick={() => setEditingDish(dish)} className="text-xs font-black uppercase text-stone-400">Modifier</button>
-                            <button onClick={() => deleteDish(dish.id)} className="text-xs font-black uppercase text-red-300">Supprimer</button>
+                     <div key={dish.id} className="p-6 bg-white rounded-[2rem] flex flex-col md:flex-row gap-6 shadow-sm border border-stone-100 group">
+                        <img src={dish.image} className="w-full md:w-32 h-48 md:h-32 object-cover rounded-2xl group-hover:scale-105 transition-transform" alt={dish.name} />
+                        <div className="flex-grow flex flex-col justify-center">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="text-xl font-bold">{dish.name}</h4>
+                              <span className="text-[9px] font-black uppercase text-stone-400 tracking-widest">{dish.category}</span>
+                            </div>
+                            <p className="text-orange-600 font-serif font-bold text-lg">{formatPrice(dish.price)} F</p>
+                          </div>
+                          <div className="flex gap-4 mt-6">
+                            <button onClick={() => setEditingDish(dish)} className="px-4 py-2 border rounded-xl text-[9px] font-black uppercase hover:bg-stone-50">Modifier</button>
+                            <button onClick={() => deleteDish(dish.id)} className="px-4 py-2 border border-red-50 text-red-300 hover:text-red-600 rounded-xl text-[9px] font-black uppercase">Supprimer</button>
                           </div>
                         </div>
                      </div>
@@ -504,15 +578,16 @@ const App: React.FC = () => {
 
       {/* LOGIN MODAL */}
       {showLoginModal && (
-        <div className="fixed inset-0 bg-stone-950/95 z-[500] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] p-12 max-w-sm w-full shadow-2xl relative">
-            <h2 className="text-3xl font-serif font-bold italic text-center mb-10">Accès Gérant</h2>
+        <div className="fixed inset-0 bg-stone-950/95 z-[500] flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-white rounded-[3.5rem] p-12 max-w-sm w-full shadow-2xl relative overflow-hidden animate-in zoom-in duration-300">
+            <div className="absolute top-0 left-0 w-full h-2 bg-orange-600"></div>
+            <h2 className="text-3xl font-serif font-bold italic text-center mb-10 text-stone-900">Accès Gérant</h2>
             <form onSubmit={handleLogin} className="space-y-6">
-              <input type="text" placeholder="Admin" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-5 bg-stone-50 rounded-2xl outline-none border" />
-              <input type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-5 bg-stone-50 rounded-2xl outline-none border" />
-              {loginError && <p className="text-red-500 text-[10px] text-center font-bold">{loginError}</p>}
-              <button type="submit" className="w-full py-6 bg-stone-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-600 transition-all">Connexion</button>
-              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-stone-400 text-[10px] font-black uppercase mt-4">Retour</button>
+              <input type="text" placeholder="Admin" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-5 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-500 transition-all font-bold" />
+              <input type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-5 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-500 transition-all font-bold" />
+              {loginError && <p className="text-red-500 text-[10px] text-center font-bold uppercase tracking-widest">{loginError}</p>}
+              <button type="submit" className="w-full py-6 bg-stone-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-600 transition-all shadow-xl">Connexion</button>
+              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-stone-400 text-[10px] font-black uppercase mt-4 tracking-widest hover:text-stone-900">Retour au site</button>
             </form>
           </div>
         </div>
@@ -520,31 +595,59 @@ const App: React.FC = () => {
 
       {/* DISH FORM MODAL */}
       {(showAddDishModal || editingDish) && (
-        <div className="fixed inset-0 bg-stone-950/95 z-[400] flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-[3rem] p-10 max-w-2xl w-full shadow-2xl relative">
-            <h3 className="text-2xl font-serif font-bold italic mb-8">{editingDish ? "Editer Plat" : "Nouveau Plat"}</h3>
+        <div className="fixed inset-0 bg-stone-950/95 z-[400] flex items-center justify-center p-4 overflow-y-auto backdrop-blur-md">
+          <div className="bg-white rounded-[3rem] p-10 max-w-2xl w-full shadow-2xl relative my-8">
+            <h3 className="text-3xl font-serif font-bold italic mb-8">{editingDish ? "Mise à jour du Plat" : "Nouvelle Création"}</h3>
             <form onSubmit={saveDish} className="space-y-6">
-               <input type="text" placeholder="Nom" required value={editingDish ? editingDish.name : newDish.name} onChange={e => editingDish ? setEditingDish({...editingDish, name: e.target.value}) : setNewDish({...newDish, name: e.target.value})} className="w-full p-4 bg-stone-50 rounded-xl border" />
-               <input type="number" placeholder="Prix" required value={editingDish ? editingDish.price : newDish.price} onChange={e => editingDish ? setEditingDish({...editingDish, price: parseInt(e.target.value)}) : setNewDish({...newDish, price: parseInt(e.target.value)})} className="w-full p-4 bg-stone-50 rounded-xl border" />
-               <select className="w-full p-4 bg-stone-50 rounded-xl border" value={editingDish ? editingDish.category : newDish.category} onChange={e => editingDish ? setEditingDish({...editingDish, category: e.target.value as any}) : setNewDish({...newDish, category: e.target.value as any})}>
-                  <option value="entrée">🥗 Entrée</option>
-                  <option value="plat">🍲 Plat Principal</option>
-                  <option value="dessert">🍰 Dessert</option>
-                  <option value="boisson">🥤 Boisson</option>
-               </select>
-               <textarea rows={3} placeholder="Description" required value={editingDish ? editingDish.description : newDish.description} onChange={e => editingDish ? setEditingDish({...editingDish, description: e.target.value}) : setNewDish({...newDish, description: e.target.value})} className="w-full p-4 bg-stone-50 rounded-xl border" />
-               <div className="flex items-center gap-6">
-                 <div className="w-24 h-24 bg-stone-100 rounded-xl overflow-hidden">
-                   {(editingDish?.image || newDish.image) && <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" alt="Preview" />}
+               <div className="grid md:grid-cols-2 gap-6">
+                 <div>
+                   <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Nom du Plat</label>
+                   <input type="text" required value={editingDish ? editingDish.name : newDish.name} onChange={e => editingDish ? setEditingDish({...editingDish, name: e.target.value}) : setNewDish({...newDish, name: e.target.value})} className="w-full p-4 bg-stone-50 rounded-2xl border border-stone-100 font-bold" />
                  </div>
-                 <div className="flex-grow">
-                   <input type="file" accept="image/*" onChange={e => handleImageUpload(e, !!editingDish)} className="text-[10px] mb-2 block" />
-                   {(editingDish?.image || newDish.image) && <button type="button" onClick={analyzeImage} disabled={isAnalyzingImage} className="bg-orange-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase">{isAnalyzingImage ? '...' : 'Analyse IA'}</button>}
+                 <div>
+                   <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Prix (FCFA)</label>
+                   <input type="number" required value={editingDish ? editingDish.price : newDish.price} onChange={e => editingDish ? setEditingDish({...editingDish, price: parseInt(e.target.value)}) : setNewDish({...newDish, price: parseInt(e.target.value)})} className="w-full p-4 bg-stone-50 rounded-2xl border border-stone-100 font-serif font-bold" />
                  </div>
                </div>
-               <div className="flex gap-4">
-                  <button type="submit" className="flex-grow bg-stone-900 text-white py-4 rounded-xl font-black uppercase text-[10px]">Enregistrer</button>
-                  <button type="button" onClick={() => { setShowAddDishModal(false); setEditingDish(null); }} className="px-8 bg-stone-100 text-stone-400 py-4 rounded-xl font-black uppercase text-[10px]">Annuler</button>
+               <div>
+                 <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Catégorie</label>
+                 <select className="w-full p-4 bg-stone-50 rounded-2xl border border-stone-100 font-bold uppercase text-[10px] tracking-widest" value={editingDish ? editingDish.category : newDish.category} onChange={e => editingDish ? setEditingDish({...editingDish, category: e.target.value as any}) : setNewDish({...newDish, category: e.target.value as any})}>
+                    <option value="entrée">🥗 Entrée</option>
+                    <option value="plat">🍲 Plat Principal</option>
+                    <option value="dessert">🍰 Dessert</option>
+                    <option value="boisson">🥤 Boisson</option>
+                 </select>
+               </div>
+               <div>
+                 <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Description</label>
+                 <textarea rows={3} required value={editingDish ? editingDish.description : newDish.description} onChange={e => editingDish ? setEditingDish({...editingDish, description: e.target.value}) : setNewDish({...newDish, description: e.target.value})} className="w-full p-4 bg-stone-50 rounded-2xl border border-stone-100 text-sm italic" placeholder="Secrets du chef..." />
+               </div>
+               <div className="p-6 bg-stone-50 rounded-3xl border-2 border-dashed border-stone-200">
+                  <div className="flex flex-col md:flex-row items-center gap-8">
+                    <div className="w-32 h-32 bg-white rounded-2xl overflow-hidden shadow-inner flex items-center justify-center text-stone-200 shrink-0">
+                       {(editingDish?.image || newDish.image) ? <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" alt="Preview" /> : <span className="text-4xl">📸</span>}
+                    </div>
+                    <div className="flex-grow space-y-4 w-full">
+                       <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Lien de l'image (URL)</label>
+                       <input 
+                        type="text" 
+                        placeholder="https://images.unsplash.com/..." 
+                        required 
+                        value={editingDish ? editingDish.image : newDish.image} 
+                        onChange={e => editingDish ? setEditingDish({...editingDish, image: e.target.value}) : setNewDish({...newDish, image: e.target.value})} 
+                        className="w-full p-4 bg-white rounded-2xl border border-stone-100 text-[10px] font-bold" 
+                       />
+                       {(editingDish?.image || newDish.image) && (
+                         <button type="button" onClick={analyzeImage} disabled={isAnalyzingImage} className="w-full md:w-auto bg-orange-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-orange-700 transition disabled:opacity-50">
+                           {isAnalyzingImage ? 'ANALYSE EN COURS...' : '✨ ANALYSE IA (VIA LIEN)'}
+                         </button>
+                       )}
+                    </div>
+                  </div>
+               </div>
+               <div className="flex gap-4 pt-4">
+                  <button type="submit" className="flex-grow bg-stone-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-600 transition-all shadow-xl">Enregistrer</button>
+                  <button type="button" onClick={() => { setShowAddDishModal(false); setEditingDish(null); }} className="px-10 bg-stone-100 text-stone-400 py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-stone-200">Annuler</button>
                </div>
             </form>
           </div>

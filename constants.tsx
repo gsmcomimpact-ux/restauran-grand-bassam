@@ -3,7 +3,8 @@ import { Dish } from './types';
 
 export const RESTAURANT_NAME = "RESTAURANT GRAND BASSAM";
 export const LOCATION = "Kouara Kano, Niamey";
-export const PHONE = "+227 8877 0594"; 
+export const PHONE = "+22788770594"; // Formaté pour les liens directs
+export const DISPLAY_PHONE = "+227 88 77 05 94"; 
 export const SITE_URL = "https://restauran-grand-bassam.vercel.app/";
 export const DELIVERY_FEE = 1000;
 

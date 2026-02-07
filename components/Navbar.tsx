@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { RESTAURANT_NAME } from '../constants';
+import { RESTAURANT_NAME, DISPLAY_PHONE } from '../constants';
 
 const LogoSmall: React.FC = () => (
   <svg viewBox="0 0 100 100" className="w-8 h-8 md:w-10 md:h-10 text-orange-600 drop-shadow-sm" aria-hidden="true">
@@ -43,7 +43,6 @@ const Navbar: React.FC = () => {
             <button 
               onClick={() => scrollToSection('hero')}
               className="flex items-center gap-3 transition-transform active:scale-95 text-left"
-              aria-label={`Retour à l'accueil de ${RESTAURANT_NAME}`}
             >
               <LogoSmall />
               <div className="flex flex-col leading-none">
@@ -60,7 +59,6 @@ const Navbar: React.FC = () => {
             <button 
                 onClick={() => scrollToSection('reserve')}
                 className="bg-stone-950 text-white px-10 py-4 rounded-2xl hover:bg-orange-600 transition-all text-[11px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-stone-900/10"
-                aria-label="Réserver une table maintenant"
             >
               Réserver
             </button>
@@ -70,11 +68,8 @@ const Navbar: React.FC = () => {
             <button 
               onClick={() => setIsOpen(!isOpen)} 
               className="text-stone-900 p-2 bg-stone-50 rounded-xl" 
-              aria-label={isOpen ? "Fermer le menu" : "Ouvrir le menu"}
-              aria-expanded={isOpen}
-              aria-controls="mobile-menu"
             >
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 {isOpen ? (
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 ) : (
