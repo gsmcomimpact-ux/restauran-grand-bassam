@@ -21,7 +21,7 @@ const QRCodeImage: React.FC<{ size?: number, className?: string }> = ({ size = 1
   <div className={`bg-white p-2 rounded-xl shadow-sm inline-block border border-stone-100 ${className}`}>
     <img 
       src={`https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(SITE_URL)}`} 
-      alt="QR Code pour accéder au site"
+      alt={`Scannez pour accéder au site officiel de ${RESTAURANT_NAME}`}
       width={size}
       height={size}
       className="block"
@@ -268,17 +268,42 @@ const App: React.FC = () => {
       <div className={`no-print ${isAdminMode ? 'pt-20' : ''}`}>
         <Navbar />
         <main>
-          {/* Main sections as defined in previous blocks... (Hero, History, Menu, Reservations) */}
           <section id="hero" className="h-[80vh] relative flex items-center justify-center bg-stone-950 overflow-hidden">
             <div className="absolute inset-0 opacity-40">
-              <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1920" className="w-full h-full object-cover" alt="Atmosphère chaleureuse" />
+              <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1920" className="w-full h-full object-cover" alt={`Ambiance chaleureuse du ${RESTAURANT_NAME}`} />
             </div>
             <div className="relative text-center px-4">
               <Logo className="w-20 h-20 mx-auto mb-6 text-orange-500" />
               <h1 className="text-6xl md:text-8xl font-serif text-white italic mb-4">{RESTAURANT_NAME}</h1>
-              <p className="text-stone-300 text-lg md:text-xl font-light tracking-[0.2em] uppercase">Saveurs Ivoiriennes • Niamey</p>
+              <p className="text-stone-300 text-lg md:text-xl font-light tracking-[0.2em] uppercase">Saveurs Ivoiriennes Authentiques • Niamey</p>
               <div className="mt-12">
                 <button onClick={() => document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' })} className="px-12 py-5 bg-orange-600 text-white rounded-full font-black uppercase tracking-widest shadow-2xl hover:bg-orange-700 transition-all">Découvrir la Carte</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="histoire" className="py-24 bg-white">
+            <div className="max-w-5xl mx-auto px-4 text-center">
+              <h2 className="text-4xl md:text-5xl font-serif font-bold italic mb-8">L'Héritage de Bassam</h2>
+              <p className="text-stone-600 text-lg leading-relaxed max-w-3xl mx-auto mb-12">
+                Le {RESTAURANT_NAME} vous transporte au cœur de la Côte d'Ivoire. Nous célébrons l'authenticité des recettes ancestrales du littoral ivoirien, mêlant traditions culinaires et hospitalité légendaire au cœur de Niamey.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
+                 <div>
+                    <span className="text-4xl mb-4 block" aria-hidden="true">🌶️</span>
+                    <h3 className="font-bold uppercase tracking-widest text-xs mb-2">Épices Authentiques</h3>
+                    <p className="text-stone-400 text-sm">Directement importées d'Abidjan pour un goût 100% ivoirien.</p>
+                 </div>
+                 <div>
+                    <span className="text-4xl mb-4 block" aria-hidden="true">🐟</span>
+                    <h3 className="font-bold uppercase tracking-widest text-xs mb-2">Produits Frais</h3>
+                    <p className="text-stone-400 text-sm">Des produits de qualité sélectionnés chaque matin sur le marché.</p>
+                 </div>
+                 <div>
+                    <span className="text-4xl mb-4 block" aria-hidden="true">🤝</span>
+                    <h3 className="font-bold uppercase tracking-widest text-xs mb-2">Accueil Chaleureux</h3>
+                    <p className="text-stone-400 text-sm">Le "S'en fout la mort" et la joie de vivre à votre table.</p>
+                 </div>
               </div>
             </div>
           </section>
@@ -286,15 +311,21 @@ const App: React.FC = () => {
           <section id="menu" className="py-24 bg-stone-50">
             <div className="max-w-7xl mx-auto px-4 mb-16 text-center">
                <h2 className="text-4xl font-serif font-bold italic mb-12">La Carte du Voyageur</h2>
-               <div className="flex justify-center gap-6 border-b border-stone-200 pb-4 overflow-x-auto no-scrollbar">
+               <div className="flex justify-center gap-6 border-b border-stone-200 pb-4 overflow-x-auto no-scrollbar" role="tablist">
                   {['tous', 'entrée', 'plat', 'dessert', 'boisson'].map(cat => (
-                    <button key={cat} onClick={() => setActiveCategory(cat)} className={`text-xs font-black uppercase tracking-widest pb-4 transition-all px-4 ${activeCategory === cat ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400 hover:text-stone-600'}`}>
+                    <button 
+                      key={cat} 
+                      role="tab"
+                      aria-selected={activeCategory === cat}
+                      onClick={() => setActiveCategory(cat)} 
+                      className={`text-xs font-black uppercase tracking-widest pb-4 transition-all px-4 ${activeCategory === cat ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400 hover:text-stone-600'}`}
+                    >
                       {cat}
                     </button>
                   ))}
                </div>
             </div>
-            <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-2 lg:grid-cols-3 gap-12">
+            <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-2 lg:grid-cols-3 gap-12" aria-live="polite">
               {publicMenuItems.map(dish => <MenuCard key={dish.id} dish={dish} />)}
             </div>
           </section>
@@ -303,10 +334,14 @@ const App: React.FC = () => {
             <div className="max-w-7xl mx-auto px-4 grid lg:grid-cols-2 gap-20 items-center">
               <div>
                 <h2 className="text-5xl font-serif font-bold italic mb-6">Réservez votre Table</h2>
-                <p className="text-stone-400 text-lg mb-10">L'excellence ivoirienne vous attend.</p>
+                <p className="text-stone-400 text-lg mb-10">L'excellence de la gastronomie ivoirienne vous attend à Kouara Kano. Réservez pour garantir votre place.</p>
                 <div className="space-y-6">
-                  <p className="font-bold">📍 {LOCATION}</p>
-                  <p className="font-bold">📞 {PHONE}</p>
+                  <p className="font-bold flex items-center gap-3">
+                    <span className="text-orange-600">📍</span> {LOCATION}
+                  </p>
+                  <p className="font-bold flex items-center gap-3">
+                    <span className="text-orange-600">📞</span> {PHONE}
+                  </p>
                 </div>
               </div>
               <div className="bg-white p-8 md:p-12 rounded-[3rem] shadow-2xl text-stone-900">
@@ -321,16 +356,21 @@ const App: React.FC = () => {
             <div className="col-span-2">
               <div className="flex items-center gap-4 mb-6">
                 <Logo className="w-10 h-10 text-orange-500" />
-                <span className="text-2xl font-serif italic font-bold uppercase">{RESTAURANT_NAME}</span>
+                <span className="text-2xl font-serif italic font-bold uppercase tracking-tight">{RESTAURANT_NAME}</span>
               </div>
-              <p className="text-stone-500 text-sm">L'élégance culinaire ivoirienne à Niamey.</p>
+              <p className="text-stone-500 text-sm max-w-xs">
+                Le meilleur restaurant ivoirien de Niamey. Retrouvez vos plats préférés : Garba, Foutou, Placali, et bien d'autres dans un cadre raffiné.
+              </p>
             </div>
             <div>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-orange-600 mb-6">Carte Digitale</h3>
               <QRCodeImage size={100} className="mb-4" />
-              <p className="text-[9px] text-stone-500 uppercase font-black">Scannez pour la carte</p>
+              <p className="text-[9px] text-stone-500 uppercase font-black">Scannez pour la carte mobile</p>
             </div>
-            <div className="text-right">
+            <div className="flex flex-col md:items-end">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-orange-600 mb-6">Administration</h3>
               <button onClick={() => setShowLoginModal(true)} className="px-8 py-4 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-orange-600 mb-8 transition-colors">Admin Console</button>
+              <p className="text-[10px] text-stone-700 uppercase tracking-widest">© {new Date().getFullYear()} {RESTAURANT_NAME}</p>
             </div>
           </div>
         </footer>
@@ -356,7 +396,6 @@ const App: React.FC = () => {
           <div className="flex-grow overflow-y-auto p-4 md:p-8 custom-scrollbar bg-stone-50">
             {showAdminPortal === 'dashboard' && (
               <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                 {/* Performance Cards */}
                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm">
                        <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Recettes du Jour</p>
@@ -381,7 +420,6 @@ const App: React.FC = () => {
                  </div>
 
                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Top Dishes Analytics */}
                     <div className="lg:col-span-1 bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-xl">
                        <h3 className="text-lg font-bold text-stone-800 mb-8 flex items-center gap-2">
                           <span className="w-2 h-6 bg-orange-600 rounded-full"></span>
@@ -410,10 +448,9 @@ const App: React.FC = () => {
                        <button onClick={() => setShowAdminPortal('menu_manager')} className="w-full mt-10 py-4 border-2 border-dashed border-stone-100 text-stone-400 text-[10px] font-black uppercase tracking-widest rounded-2xl hover:border-orange-200 hover:text-orange-600 transition">Gérer le Menu</button>
                     </div>
 
-                    {/* Recent Global Activity Log */}
                     <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-stone-100 shadow-xl overflow-hidden flex flex-col">
                        <div className="px-8 py-6 border-b bg-stone-50 flex justify-between items-center">
-                          <h3 className="font-bold text-stone-800 uppercase text-xs tracking-widest">Journal des Flux en Temps Réel</h3>
+                          <h3 className="font-bold text-stone-800 uppercase text-xs tracking-widest">Journal des Flux Récent</h3>
                           <button onClick={() => setShowMasterReport(true)} className="text-[9px] font-black bg-stone-900 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition">Exporter Rapport</button>
                        </div>
                        <div className="flex-grow overflow-y-auto max-h-[500px] divide-y divide-stone-50 custom-scrollbar">
@@ -455,7 +492,6 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {/* Other tabs keep their existing logic but with improved styles as per previous blocks... */}
             {showAdminPortal === 'orders' && (
               <div className="space-y-4 max-w-4xl mx-auto">
                 {orders.length === 0 ? <p className="text-center py-20 italic">Aucune commande.</p> : orders.map(order => (
@@ -496,7 +532,6 @@ const App: React.FC = () => {
 
             {showAdminPortal === 'accounting' && (
               <div className="max-w-5xl mx-auto space-y-10">
-                {/* Improved accounting section here... */}
                 <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-stone-100 space-y-8">
                    <div className="flex flex-wrap gap-4 items-end border-b pb-8">
                       <div className="flex-1 min-w-[150px]">
@@ -566,7 +601,7 @@ const App: React.FC = () => {
                 {menuItems.map(dish => (
                   <div key={dish.id} className="p-6 bg-white border border-stone-100 rounded-[2rem] flex flex-col md:flex-row gap-8 shadow-sm group hover:shadow-xl transition-all duration-500">
                     <div className="relative w-full md:w-48 h-48 rounded-2xl overflow-hidden bg-stone-100 shrink-0">
-                      <img src={dish.image} className="w-full h-full object-cover" alt="" />
+                      <img src={dish.image} className="w-full h-full object-cover" alt={`Photo de ${dish.name}`} />
                     </div>
                     <div className="flex-grow flex flex-col justify-between">
                         <div>
@@ -605,7 +640,6 @@ const App: React.FC = () => {
                   <h2 className="text-lg font-black uppercase tracking-[0.2em] text-stone-400 mt-2">RAPPORT GLOBAL D'ACTIVITÉ</h2>
                   <p className="text-xs font-bold text-stone-600 mt-2">Généré le {new Date().toLocaleString()}</p>
                 </div>
-                {/* Stats block for print */}
                 <div className="grid grid-cols-3 gap-4 mb-10">
                    <div className="p-6 border rounded-2xl text-center">
                      <p className="text-[9px] font-black uppercase mb-1">Total Ventes</p>
@@ -620,7 +654,6 @@ const App: React.FC = () => {
                      <p className="text-xl font-bold">{orders.length}</p>
                    </div>
                 </div>
-                {/* Tables... */}
                 <h3 className="text-sm font-black uppercase border-l-4 border-orange-600 pl-4 mb-6">Détail des Flux</h3>
                 <table className="w-full text-[10px]">
                    <thead className="bg-stone-50">
@@ -654,7 +687,7 @@ const App: React.FC = () => {
 
       {/* MODALS: Login, Add/Edit Dish, etc. */}
       {showLoginModal && (
-        <div className="fixed inset-0 bg-stone-950/98 z-[500] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-stone-950/98 z-[500] flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-orange-600"></div>
             <h2 className="text-2xl font-bold font-serif italic text-center mb-8 text-stone-900">Console Gérant</h2>
@@ -671,7 +704,7 @@ const App: React.FC = () => {
 
       {/* ADD / EDIT DISH FORM MODAL */}
       {(showAddDishModal || editingDish) && (
-        <div className="fixed inset-0 bg-stone-950/90 z-[400] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-stone-950/90 z-[400] flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div className="bg-white rounded-[2.5rem] p-10 max-w-xl w-full shadow-2xl relative overflow-y-auto max-h-[90vh] custom-scrollbar animate-in zoom-in duration-300">
             <h2 className="text-2xl font-serif font-bold italic mb-8">{editingDish ? "Modifier le Plat" : "Nouveau Plat"}</h2>
             <form onSubmit={saveDish} className="space-y-6">
@@ -688,7 +721,7 @@ const App: React.FC = () => {
                <textarea rows={3} required value={editingDish ? editingDish.description : newDish.description} onChange={e => editingDish ? setEditingDish({...editingDish, description: e.target.value}) : setNewDish({...newDish, description: e.target.value})} className="w-full p-4 bg-stone-50 border rounded-2xl text-sm" placeholder="Description du plat..." />
                <div className="p-4 bg-stone-50 rounded-2xl border border-dashed flex items-center gap-4">
                   <div className="w-16 h-16 bg-white rounded-xl overflow-hidden shadow-inner flex items-center justify-center text-stone-300 text-2xl font-bold">
-                     {(editingDish?.image || newDish.image) ? <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" /> : '+'}
+                     {(editingDish?.image || newDish.image) ? <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" alt="Prévisualisation" /> : '+'}
                   </div>
                   <input type="file" accept="image/*" onChange={e => handleImageUpload(e, !!editingDish)} className="text-[9px] font-black uppercase text-stone-400" />
                </div>
@@ -703,7 +736,7 @@ const App: React.FC = () => {
 
       {/* INDIVIDUAL INVOICE MODAL */}
       {selectedInvoice && (
-        <div className="fixed inset-0 bg-stone-950/95 z-[400] flex items-center justify-center p-4 no-print">
+        <div className="fixed inset-0 bg-stone-950/95 z-[400] flex items-center justify-center p-4 no-print" role="dialog" aria-modal="true">
           <div className="bg-white rounded-[3rem] p-10 max-w-sm w-full shadow-2xl relative">
             <div id="print-section" className="text-stone-900 p-4">
               <div className="text-center border-b pb-6 mb-6">
