@@ -14,6 +14,7 @@ const formatPrice = (amount: number) => new Intl.NumberFormat('de-DE').format(am
 
 // Utility to handle Google Drive view links for image tags
 export const formatImageUrl = (url: string) => {
+  if (!url) return '';
   if (url.includes('drive.google.com')) {
     const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
@@ -76,28 +77,38 @@ const App: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
+  // Logique de synchronisation améliorée pour Vercel
   useEffect(() => {
     const localMenuString = localStorage.getItem('grand_bassam_menu');
-    let items: Dish[] = localMenuString ? JSON.parse(localMenuString) : INITIAL_MENU;
+    let finalMenu: Dish[] = [];
     
-    // Synchronisation forcée des données "source" (INITIAL_MENU) avec le cache local
-    // Cela permet de s'assurer que les changements de catégories ou d'images faits dans le code
-    // sont répercutés même si l'utilisateur a déjà des données en cache.
     if (localMenuString) {
-      items = items.map(item => {
-        const initialItem = INITIAL_MENU.find(i => i.id === item.id);
-        if (initialItem) {
-          // On priorise les données du code pour les éléments existants (ID fixes)
-          return { ...item, ...initialItem };
-        }
-        return item;
-      });
-      localStorage.setItem('grand_bassam_menu', JSON.stringify(items));
+      try {
+        const savedMenu: Dish[] = JSON.parse(localMenuString);
+        
+        // 1. On commence par les éléments du code source (INITIAL_MENU)
+        // Cela garantit que les nouveaux plats et les corrections de catégories sont appliqués.
+        finalMenu = [...INITIAL_MENU];
+        
+        // 2. On ajoute les plats personnalisés créés via l'admin qui ne sont pas dans INITIAL_MENU
+        const initialIds = new Set(INITIAL_MENU.map(i => i.id));
+        const customItems = savedMenu.filter(item => !initialIds.has(item.id));
+        
+        finalMenu = [...finalMenu, ...customItems];
+        
+        // On met à jour le stockage local avec la liste synchronisée
+        localStorage.setItem('grand_bassam_menu', JSON.stringify(finalMenu));
+      } catch (e) {
+        finalMenu = INITIAL_MENU;
+        localStorage.setItem('grand_bassam_menu', JSON.stringify(INITIAL_MENU));
+      }
     } else {
+      // Premier passage : on utilise simplement les données du code
+      finalMenu = INITIAL_MENU;
       localStorage.setItem('grand_bassam_menu', JSON.stringify(INITIAL_MENU));
     }
     
-    setMenuItems(items);
+    setMenuItems(finalMenu);
     if (sessionStorage.getItem('is_admin') === 'true') {
       setIsAdminMode(true);
     }
@@ -105,12 +116,14 @@ const App: React.FC = () => {
   }, []);
 
   const refreshAdminData = () => {
-    const fetchedOrders = JSON.parse(localStorage.getItem('grand_bassam_orders') || '[]');
-    setOrders(fetchedOrders);
-    const fetchedRes = JSON.parse(localStorage.getItem('grand_bassam_reservations') || '[]');
-    setReservations(fetchedRes);
-    const localMenu = localStorage.getItem('grand_bassam_menu');
-    if (localMenu) setMenuItems(JSON.parse(localMenu));
+    try {
+      const fetchedOrders = JSON.parse(localStorage.getItem('grand_bassam_orders') || '[]');
+      setOrders(fetchedOrders);
+      const fetchedRes = JSON.parse(localStorage.getItem('grand_bassam_reservations') || '[]');
+      setReservations(fetchedRes);
+    } catch (e) {
+      console.error("Erreur de lecture des données locales");
+    }
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -259,6 +272,7 @@ const App: React.FC = () => {
     }
   };
 
+  // Filtrage robuste
   const publicMenuItems = useMemo(() => {
     if (activeCategory === 'tous') return menuItems;
     return menuItems.filter(item => item.category === activeCategory);
