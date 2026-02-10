@@ -1,64 +1,51 @@
-
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Restaurant Grand Bassam - L'Authentique Côte d'Ivoire à Niamey</title>
-    <meta name="description" content="Découvrez le goût authentique de la Côte d'Ivoire au cœur de Niamey. Le Restaurant Grand Bassam propose Garba, Foutou, Attiéké et plus encore. Réservez votre table en ligne ou commandez via WhatsApp.">
-    <meta name="keywords" content="restaurant ivoirien Niamey, cuisine ivoirienne Niger, Grand Bassam Niamey, Garba Niamey, Foutou banane Niger, restaurant Kouara Kano, manger ivoirien Niamey, réservation restaurant Niamey">
-    <meta name="author" content="Restaurant Grand Bassam">
-    
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://restauran-grand-bassam.vercel.app/">
-    <meta property="og:title" content="Restaurant Grand Bassam - L'Authentique Côte d'Ivoire à Niamey">
-    <meta property="og:description" content="Le meilleur de la gastronomie ivoirienne à Niamey. Garba, Foutou, Attiéké servis dans un cadre élégant.">
-    <meta property="og:image" content="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1200">
-
-    <link rel="canonical" href="https://restauran-grand-bassam.vercel.app/" />
-
+    <title>RESTAURANT GRAND BASSAM - Excellence Ivoirienne à Niamey</title>
+    <meta name="description" content="Le goût authentique de la Côte d'Ivoire au Niger. Garba, Foutou, Attiéké et plus encore chez Restaurant Grand Bassam.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Montserrat:wght@100..900&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --ivory-orange: #FF8200;
+            --ivory-green: #009E60;
+        }
         body {
-            font-family: 'Poppins', sans-serif;
-            margin: 0;
-            padding: 0;
+            font-family: 'Montserrat', sans-serif;
         }
-        h1, h2, h3 {
+        .font-serif {
             font-family: 'Playfair Display', serif;
         }
-        #root:empty {
-            display: flex;
-            align-items: center;
-            justify-center;
-            height: 100vh;
-            background: #f5f5f4;
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
         }
-        #root:empty::after {
-            content: "Chargement du Restaurant...";
-            font-family: 'Playfair Display', serif;
-            font-style: italic;
-            color: #ea580c;
-            font-size: 1.5rem;
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
         }
     </style>
 <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
     "react": "https://esm.sh/react@^19.2.4",
-    "react/": "https://esm.sh/react@^19.2.4/"
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.40.0"
   }
 }
 </script>
 </head>
-<body class="bg-stone-50 text-stone-900">
+<body class="bg-stone-50 text-stone-900 selection:bg-orange-100 selection:text-orange-900">
     <div id="root"></div>
-    <script type="module" src="index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
-
 import React, { useState } from 'react';
 import { Dish } from '../types';
 import { PHONE, DELIVERY_FEE } from '../constants';
+import { formatImageUrl } from '../App';
 
 interface MenuCardProps {
   dish: Dish;
@@ -76,7 +76,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ dish }) => {
       <article className="group bg-white rounded-3xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-500 border border-stone-100 flex flex-col h-full">
         <div className="relative h-64 overflow-hidden">
           <img 
-            src={dish.image} 
+            src={formatImageUrl(dish.image)} 
             alt={`Image de ${dish.name}`} 
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
           />

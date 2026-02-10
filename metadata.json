@@ -1,7 +1,7 @@
 {
-  "name": "Restaurant Grand Bassam Niamey",
-  "description": "Découvrez le goût authentique de la Côte d'Ivoire au cœur de Niamey. Le Restaurant Grand Bassam propose Garba, Foutou, Attiéké et plus encore. Réservez votre table en ligne ou commandez via WhatsApp.",
-  "keywords": "restaurant ivoirien Niamey, cuisine ivoirienne Niger, Grand Bassam Niamey, Garba Niamey, Foutou banane Niger, restaurant Kouara Kano, manger ivoirien Niamey, réservation restaurant Niamey",
+  "name": "Restaurant Grand Bassam - Niamey",
+  "description": "L'authentique cuisine ivoirienne à Niamey. Garba, Foutou, Kedjenou et Alloco préparés avec passion au Restaurant Grand Bassam.",
+  "keywords": "restaurant ivoirien Niamey, cuisine ivoirienne Niger, Grand Bassam Niamey, Garba Niamey, Foutou banane Niger, Kouara Kano restaurant, manger ivoirien Niamey, réservation restaurant Niamey",
   "requestFramePermissions": [
     "geolocation"
   ]

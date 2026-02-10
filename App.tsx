@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Navbar from './components/Navbar';
 import MenuCard from './components/MenuCard';
 import ReservationForm from './components/ReservationForm';
@@ -12,6 +11,17 @@ import { jsPDF } from "https://esm.sh/jspdf@2.5.1";
 import autoTable from "https://esm.sh/jspdf-autotable@3.8.2";
 
 const formatPrice = (amount: number) => new Intl.NumberFormat('de-DE').format(amount);
+
+// Utility to handle Google Drive view links for image tags
+export const formatImageUrl = (url: string) => {
+  if (url.includes('drive.google.com')) {
+    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://drive.google.com/uc?id=${match[1]}`;
+    }
+  }
+  return url;
+};
 
 const Logo: React.FC<{ className?: string }> = ({ className = "w-12 h-12" }) => (
   <div className={`relative flex items-center justify-center ${className}`} aria-hidden="true">
@@ -36,7 +46,6 @@ const QRCodeImage: React.FC<{ size?: number, className?: string }> = ({ size = 1
   </div>
 );
 
-// --- Main App Component ---
 type AdminTab = 'none' | 'dashboard' | 'orders' | 'reservations' | 'accounting' | 'menu_manager';
 
 const App: React.FC = () => {
@@ -68,8 +77,21 @@ const App: React.FC = () => {
   const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
-    const localMenu = localStorage.getItem('grand_bassam_menu');
-    const items = localMenu ? JSON.parse(localMenu) : INITIAL_MENU;
+    const localMenuString = localStorage.getItem('grand_bassam_menu');
+    let items: Dish[] = localMenuString ? JSON.parse(localMenuString) : INITIAL_MENU;
+    
+    // Always sync image changes from INITIAL_MENU to local cache for hardcoded IDs
+    if (localMenuString) {
+      items = items.map(item => {
+        const initialItem = INITIAL_MENU.find(i => i.id === item.id);
+        if (initialItem && initialItem.image !== item.image) {
+          return { ...item, image: initialItem.image };
+        }
+        return item;
+      });
+      localStorage.setItem('grand_bassam_menu', JSON.stringify(items));
+    }
+    
     setMenuItems(items);
     if (sessionStorage.getItem('is_admin') === 'true') {
       setIsAdminMode(true);
@@ -88,7 +110,7 @@ const App: React.FC = () => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'admin' && password === 'bassam227') {
+    if (username === 'admin' && password === 'grandbassam227') {
       setIsAdminMode(true);
       setShowLoginModal(false);
       sessionStorage.setItem('is_admin', 'true');
@@ -138,8 +160,7 @@ const App: React.FC = () => {
     if (!currentImg) return alert("Veuillez d'abord saisir un lien d'image valide.");
     setIsAnalyzingImage(true);
     try {
-      // Pour analyser une image via lien avec Gemini, il faut d'abord la convertir en base64
-      const responseImg = await fetch(currentImg);
+      const responseImg = await fetch(formatImageUrl(currentImg));
       const blob = await responseImg.blob();
       const reader = new FileReader();
       const base64Promise = new Promise<string>((resolve) => {
@@ -195,7 +216,7 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error(error);
-      alert("Erreur lors de l'analyse. Assurez-vous que le lien de l'image est public et accessible (CORS).");
+      alert("Erreur lors de l'analyse.");
     } finally {
       setIsAnalyzingImage(false);
     }
@@ -291,7 +312,7 @@ const App: React.FC = () => {
 
   const generateReportPDF = () => {
     const doc = new jsPDF();
-    doc.setFont("helvetica", "bold").setFontSize(22).text("BILAN FINANCIER GRAND B", 105, 20, { align: 'center' });
+    doc.setFont("helvetica", "bold").setFontSize(22).text(`BILAN FINANCIER ${RESTAURANT_NAME}`, 105, 20, { align: 'center' });
     doc.setFontSize(10).text(`Période: ${dateRange.start} au ${dateRange.end}`, 105, 30, { align: 'center' });
     doc.line(20, 35, 190, 35);
     doc.text(`Chiffre d'Affaire: ${formatPrice(stats.periodRevenue)} FCFA`, 20, 45);
@@ -308,9 +329,8 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-stone-50">
-      {/* ADMIN BAR */}
       {isAdminMode && (
-        <nav className="fixed top-0 left-0 w-full bg-stone-900 text-white py-3 px-6 z-[200] flex justify-between items-center shadow-2xl no-print border-b border-orange-600/50">
+        <nav className="fixed top-0 left-0 w-full bg-stone-950 text-white py-3 px-6 z-[200] flex justify-between items-center shadow-2xl no-print border-b border-orange-600/50">
           <div className="flex gap-4 md:gap-6 overflow-x-auto items-center no-scrollbar">
             <span className="text-[10px] font-black bg-orange-600 px-3 py-1 rounded-full shrink-0">ADMIN</span>
             <button onClick={() => setShowAdminPortal('dashboard')} className={`text-[10px] font-bold uppercase tracking-widest shrink-0 ${showAdminPortal === 'dashboard' ? 'text-orange-400' : 'text-stone-300'}`}>Tableau de Bord</button>
@@ -326,190 +346,228 @@ const App: React.FC = () => {
       <div className={`no-print ${isAdminMode ? 'pt-16' : ''}`}>
         <Navbar />
         <main>
-          <section id="hero" className="h-[85vh] relative flex items-center justify-center bg-stone-950 overflow-hidden">
-            <div className="absolute inset-0 opacity-40">
-              <img src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&q=80&w=1920" className="w-full h-full object-cover" alt="Hero" />
+          <section id="hero" className="h-[90vh] relative flex items-center justify-center bg-stone-950 overflow-hidden">
+            <div className="absolute inset-0">
+              <img src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&q=80&w=1920" className="w-full h-full object-cover opacity-50 scale-105 animate-pulse-slow" alt="Cuisine Ivoirienne" />
+              <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-950/40 to-transparent"></div>
             </div>
-            <div className="relative text-center px-4">
-              <Logo className="w-20 h-20 mx-auto mb-8 text-orange-500" />
-              <h1 className="text-7xl md:text-[10rem] font-serif text-white italic mb-6 leading-none select-none">Grand Bassam</h1>
-              <p className="text-orange-400 text-lg md:text-2xl font-light tracking-[0.5em] uppercase mb-12">L'Art de la Gastronomie Ivoirienne</p>
+            <div className="relative text-center px-4 max-w-5xl">
+              <Logo className="w-24 h-24 mx-auto mb-10 text-orange-500 drop-shadow-2xl" />
+              <h1 className="text-5xl md:text-[8rem] font-serif text-white italic mb-8 leading-none select-none tracking-tighter">
+                Grand Bassam
+              </h1>
+              <div className="w-24 h-1 bg-orange-600 mx-auto mb-8"></div>
+              <p className="text-white text-lg md:text-2xl font-light tracking-[0.6em] uppercase mb-12 opacity-90">L'Art de la Gastronomie Ivoirienne</p>
               <div className="flex flex-col md:flex-row gap-6 justify-center">
-                <button onClick={() => scrollToSection('menu')} className="px-14 py-5 bg-orange-600 text-white rounded-full font-black uppercase tracking-widest shadow-2xl hover:bg-orange-700 hover:scale-105 transition-all">Découvrir la Carte</button>
-                <button onClick={() => scrollToSection('histoire')} className="px-14 py-5 bg-transparent border-2 border-white/30 text-white rounded-full font-black uppercase tracking-widest hover:bg-white hover:text-stone-900 transition-all">Notre Histoire</button>
+                <button onClick={() => scrollToSection('menu')} className="px-16 py-6 bg-orange-600 text-white rounded-full font-black uppercase tracking-widest shadow-[0_0_50px_rgba(234,88,12,0.3)] hover:bg-orange-700 hover:scale-105 transition-all">Découvrir la Carte</button>
+                <button onClick={() => scrollToSection('reserve')} className="px-16 py-6 bg-white/10 backdrop-blur-md border border-white/30 text-white rounded-full font-black uppercase tracking-widest hover:bg-white hover:text-stone-900 transition-all">Réserver une Table</button>
               </div>
             </div>
           </section>
 
-          <section id="histoire" className="py-24 bg-white">
-            <div className="max-w-6xl mx-auto px-4 grid md:grid-cols-2 gap-16 items-center">
-              <div className="relative">
-                <div className="absolute -top-10 -left-10 w-40 h-40 bg-orange-50 rounded-full -z-10"></div>
-                <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1200" className="rounded-[4rem] shadow-3xl w-full h-[600px] object-cover" alt="Histoire" />
+          <section id="histoire" className="py-32 bg-white overflow-hidden">
+            <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-24 items-center">
+              <div className="relative order-2 lg:order-1">
+                <div className="absolute -top-12 -left-12 w-64 h-64 bg-orange-50 rounded-full blur-3xl opacity-50 -z-10"></div>
+                <div className="absolute -bottom-12 -right-12 w-64 h-64 bg-green-50 rounded-full blur-3xl opacity-50 -z-10"></div>
+                <div className="relative group">
+                   <img src="https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?auto=format&fit=crop&q=80&w=1200" className="rounded-[4rem] shadow-3xl w-full h-[650px] object-cover relative z-10 transition-transform duration-700 group-hover:scale-[1.02]" alt="Restaurant Grand Bassam" />
+                   <div className="absolute -inset-4 border-2 border-orange-600/20 rounded-[4.5rem] -z-0"></div>
+                </div>
               </div>
-              <div className="space-y-8">
-                <h2 className="text-5xl font-serif italic font-bold text-stone-900 leading-tight">Un Voyage du <span className="text-orange-600">Littoral</span> au <span className="text-orange-600">Sahel</span></h2>
-                <div className="w-20 h-1 bg-orange-600"></div>
-                <p className="text-stone-500 leading-relaxed text-lg">
-                  L'histoire du <span className="font-bold text-stone-800">RESTAURANT GRAND BASSAM</span> commence avec une mission simple : créer un pont culinaire entre la Côte d'Ivoire et le Niger. Fondé par des passionnés de saveurs authentiques, nous avons à cœur de partager les trésors de notre terroir.
-                </p>
-                <p className="text-stone-500 leading-relaxed text-lg">
-                  Chaque Garba, chaque Kedjenou et chaque boule de Foutou est préparé selon les méthodes ancestrales, utilisant des produits frais importés directement pour garantir ce goût unique qui fait notre renommée à Niamey. Bienvenue chez vous, bienvenue au Grand Bassam.
-                </p>
+              <div className="space-y-10 order-1 lg:order-2">
+                <div className="space-y-4">
+                  <span className="text-orange-600 text-[10px] font-black uppercase tracking-[0.4em]">Depuis 2018</span>
+                  <h2 className="text-6xl md:text-7xl font-serif italic font-bold text-stone-900 leading-none">Un Voyage de <span className="text-orange-600 underline decoration-stone-200 underline-offset-8">Bassam</span> à <span className="text-green-600">Niamey</span></h2>
+                </div>
+                <div className="w-20 h-1.5 bg-gradient-to-r from-orange-600 to-green-600"></div>
+                <div className="space-y-6 text-stone-500 leading-relaxed text-lg font-light">
+                  <p>
+                    Le <span className="font-bold text-stone-900 italic">{RESTAURANT_NAME}</span> est né d'une volonté farouche : transporter l'âme culinaire de la Côte d'Ivoire au Niger.
+                  </p>
+                  <p>
+                    Nous sélectionnons nos produits avec une rigueur absolue. Notre Attiéké vient directement des meilleures coopératives d'Abidjan, nos épices sont choisies pour leur puissance aromatique, et nos braiseurs maîtrisent le feu comme personne à Niamey.
+                  </p>
+                  <p className="font-serif italic text-stone-900 text-2xl border-l-4 border-orange-600 pl-6">
+                    "Plus qu'un repas, nous vous offrons un moment de fraternité ivoirienne."
+                  </p>
+                </div>
               </div>
             </div>
           </section>
 
-          <section id="menu" className="py-24 bg-stone-50">
-            <div className="text-center mb-12 space-y-4">
-               <h2 className="text-5xl font-serif italic font-bold">La Carte du Chef</h2>
-               <p className="text-stone-400 uppercase tracking-[0.3em] font-black text-xs">Excellence & Authenticité</p>
+          <section id="menu" className="py-32 bg-stone-50">
+            <div className="text-center mb-20 space-y-6">
+               <span className="text-orange-600 text-[10px] font-black uppercase tracking-[0.5em]">La Sélection du Grand Bassam</span>
+               <h2 className="text-6xl font-serif italic font-bold text-stone-900">La Carte Digitale</h2>
+               <p className="text-stone-400 max-w-xl mx-auto italic font-light">Authenticité préservée, saveurs explosives. Commandez en un clic via WhatsApp pour une dégustation immédiate.</p>
             </div>
             
-            <div className="flex justify-center gap-4 mb-16 flex-wrap px-4 max-w-4xl mx-auto">
+            <div className="flex justify-center gap-3 mb-20 flex-wrap px-6 max-w-5xl mx-auto">
               {['tous', 'entrée', 'plat', 'dessert', 'boisson'].map(cat => (
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-300 ${activeCategory === cat ? 'bg-orange-600 text-white shadow-xl shadow-orange-600/20' : 'bg-white text-stone-400 hover:text-stone-900 border border-stone-100'}`}
+                  className={`px-10 py-4 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-500 ${activeCategory === cat ? 'bg-orange-600 text-white shadow-[0_10px_30px_rgba(234,88,12,0.3)] scale-110' : 'bg-white text-stone-400 hover:text-stone-900 border border-stone-200 hover:border-stone-400 shadow-sm'}`}
                 >
                   {cat === 'tous' ? 'Tout Voir' : cat}
                 </button>
               ))}
             </div>
 
-            <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-2 lg:grid-cols-3 gap-12">
-              {publicMenuItems.map(dish => <MenuCard key={dish.id} dish={dish} />)}
+            <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-2 lg:grid-cols-3 gap-16">
+              {publicMenuItems.map((dish, index) => (
+                <div key={dish.id} className="relative">
+                  {index === 0 && (
+                    <div className="absolute -top-4 -left-4 z-10 bg-orange-600 text-white px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest shadow-xl rotate-[-5deg]">
+                      ⭐ Le Plus Demandé
+                    </div>
+                  )}
+                  <MenuCard dish={dish} />
+                </div>
+              ))}
             </div>
           </section>
 
-          <section id="reserve" className="py-24 bg-stone-900 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-orange-600/10 blur-[120px] rounded-full"></div>
-            <div className="max-w-4xl mx-auto px-4 bg-white p-10 md:p-16 rounded-[4rem] text-stone-900 shadow-3xl relative z-10">
-              <div className="text-center mb-12 space-y-4">
-                <h2 className="text-4xl font-serif italic font-bold">Une Table d'Exception</h2>
-                <p className="text-stone-400 uppercase tracking-widest font-black text-[10px]">Réservation instantanée via WhatsApp</p>
+          <section id="reserve" className="py-32 bg-stone-950 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-orange-600/5 blur-[150px] rounded-full pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-green-600/5 blur-[150px] rounded-full pointer-events-none"></div>
+            
+            <div className="max-w-4xl mx-auto px-6">
+              <div className="bg-white p-12 md:p-20 rounded-[5rem] text-stone-900 shadow-[0_40px_100px_rgba(0,0,0,0.4)] relative z-10 border border-stone-100">
+                <div className="text-center mb-16 space-y-6">
+                  <Logo className="w-16 h-16 mx-auto text-orange-600" />
+                  <h2 className="text-5xl font-serif italic font-bold">Réserver votre Expérience</h2>
+                  <div className="w-16 h-1 bg-stone-200 mx-auto"></div>
+                  <p className="text-stone-400 uppercase tracking-widest font-black text-[10px]">Traitement prioritaire via WhatsApp</p>
+                </div>
+                <ReservationForm />
               </div>
-              <ReservationForm />
             </div>
           </section>
         </main>
 
-        <footer className="bg-stone-950 text-white pt-24 pb-12 px-8 border-t border-white/5 relative">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-600 via-orange-400 to-orange-600"></div>
-          <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-16">
+        <footer className="bg-stone-950 text-white pt-32 pb-16 px-8 border-t border-white/5 relative">
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-orange-600 via-white to-green-600"></div>
+          <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-20">
             <div className="col-span-1 lg:col-span-1">
-              <div className="flex items-center gap-4 mb-8">
-                <Logo className="w-12 h-12 text-orange-500" />
-                <span className="text-2xl font-serif italic font-bold uppercase tracking-tight">{RESTAURANT_NAME}</span>
+              <div className="flex items-center gap-5 mb-10">
+                <Logo className="w-14 h-14 text-orange-500" />
+                <div className="flex flex-col">
+                  <span className="text-2xl font-serif italic font-bold tracking-tighter">{RESTAURANT_NAME}</span>
+                  <span className="text-[8px] uppercase font-black tracking-[0.4em] text-orange-600">Ivory Excellence</span>
+                </div>
               </div>
-              <p className="text-stone-400 text-sm leading-relaxed mb-8 italic">"L'excellence culinaire au cœur de Niamey."</p>
+              <p className="text-stone-400 text-sm leading-relaxed mb-10 italic font-light">"Chaque plat raconte une histoire, chaque bouchée est un voyage entre la lagune et le désert."</p>
             </div>
             <div>
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500 mb-8">Navigation</h3>
-              <ul className="space-y-4">
-                <li><button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="text-stone-400 hover:text-white text-xs font-bold uppercase tracking-widest">Accueil</button></li>
-                <li><button onClick={() => scrollToSection('histoire')} className="text-stone-400 hover:text-white text-xs font-bold uppercase tracking-widest">L'Histoire</button></li>
-                <li><button onClick={() => scrollToSection('menu')} className="text-stone-400 hover:text-white text-xs font-bold uppercase tracking-widest">La Carte</button></li>
-                <li><button onClick={() => setShowLoginModal(true)} className="text-stone-600 hover:text-orange-500 text-[10px] font-black uppercase">Espace Gérant</button></li>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-orange-500 mb-10">Exploration</h3>
+              <ul className="space-y-5">
+                <li><button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="text-stone-400 hover:text-white text-[11px] font-bold uppercase tracking-widest transition-colors">Accueil</button></li>
+                <li><button onClick={() => scrollToSection('histoire')} className="text-stone-400 hover:text-white text-[11px] font-bold uppercase tracking-widest transition-colors">L'Héritage</button></li>
+                <li><button onClick={() => scrollToSection('menu')} className="text-stone-400 hover:text-white text-[11px] font-bold uppercase tracking-widest transition-colors">La Carte</button></li>
+                <li><button onClick={() => setShowLoginModal(true)} className="text-stone-700 hover:text-orange-500 text-[10px] font-black uppercase transition-colors">Gestionnaire</button></li>
               </ul>
             </div>
             <div>
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500 mb-8">Contact</h3>
-              <ul className="space-y-6 text-xs">
-                <li className="flex gap-4"><span>📍</span><p className="text-stone-400">{LOCATION}</p></li>
-                <li className="flex gap-4"><span>📞</span><p className="text-stone-400">{DISPLAY_PHONE}</p></li>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-orange-500 mb-10">Incontournable</h3>
+              <ul className="space-y-8 text-sm">
+                <li className="flex gap-5 items-start">
+                  <span className="text-orange-600 text-xl">📍</span>
+                  <p className="text-stone-400 font-light">{LOCATION}</p>
+                </li>
+                <li className="flex gap-5 items-center">
+                  <span className="text-orange-600 text-xl">📞</span>
+                  <p className="text-stone-400 font-bold">{DISPLAY_PHONE}</p>
+                </li>
               </ul>
             </div>
             <div className="flex flex-col items-center md:items-end">
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500 mb-8">Carte Digitale</h3>
-              <QRCodeImage size={100} className="mb-4 border-4 border-white/5" />
-              <p className="text-[8px] text-stone-500 text-right uppercase font-black tracking-widest">Commandez à table</p>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-orange-500 mb-10">Accès Mobile</h3>
+              <QRCodeImage size={110} className="mb-6 border-4 border-stone-900 shadow-2xl" />
+              <p className="text-[9px] text-stone-500 text-right uppercase font-black tracking-[0.3em]">Scanner pour commander</p>
             </div>
           </div>
-          <div className="max-w-7xl mx-auto mt-24 pt-8 border-t border-white/5 text-center">
-            <p className="text-[10px] text-stone-500 font-black uppercase tracking-[0.3em]">© {new Date().getFullYear()} {RESTAURANT_NAME} • AUTHENTICITÉ IVOIRIENNE</p>
+          <div className="max-w-7xl mx-auto mt-32 pt-10 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
+            <p className="text-[10px] text-stone-600 font-black uppercase tracking-[0.4em]">© {new Date().getFullYear()} {RESTAURANT_NAME} • AUTHENTICITÉ IVOIRIENNE</p>
+            <div className="flex gap-6">
+              <span className="text-[10px] font-black text-orange-600/50 tracking-widest">GASTRONOMIE</span>
+              <span className="text-[10px] font-black text-stone-600 tracking-widest">PARTAGE</span>
+              <span className="text-[10px] font-black text-green-600/50 tracking-widest">TRADITION</span>
+            </div>
           </div>
         </footer>
       </div>
 
-      {/* ADMIN PANELS */}
+      {/* ADMIN PORTAL OVERLAYS */}
       {isAdminMode && showAdminPortal !== 'none' && (
         <div className="fixed inset-0 bg-stone-50 z-[300] flex flex-col no-print">
-          <header className="p-6 border-b flex justify-between items-center bg-white shadow-sm">
-            <h2 className="text-2xl font-serif font-bold italic uppercase">{
-              showAdminPortal === 'dashboard' ? 'Tableau de Bord' :
-              showAdminPortal === 'orders' ? 'Commandes Clients' :
-              showAdminPortal === 'reservations' ? 'Gestion des Réservations' :
-              showAdminPortal === 'accounting' ? 'Bilan Financier' : 'Gestion de la Carte'
-            }</h2>
-            <button onClick={() => setShowAdminPortal('none')} className="w-12 h-12 flex items-center justify-center border rounded-2xl hover:bg-stone-100 transition-colors">✕</button>
+          <header className="p-8 border-b flex justify-between items-center bg-white shadow-xl relative z-10">
+            <div className="flex items-center gap-6">
+              <Logo className="w-12 h-12 text-orange-600" />
+              <h2 className="text-3xl font-serif font-bold italic uppercase tracking-tight">{
+                showAdminPortal === 'dashboard' ? 'Tableau de Bord' :
+                showAdminPortal === 'orders' ? 'Suivi des Commandes' :
+                showAdminPortal === 'reservations' ? 'Gestion Réservations' :
+                showAdminPortal === 'accounting' ? 'Bilan d\'Activité' : 'Édition de la Carte'
+              }</h2>
+            </div>
+            <button onClick={() => setShowAdminPortal('none')} className="w-14 h-14 flex items-center justify-center border-2 border-stone-100 rounded-2xl hover:bg-stone-100 hover:border-stone-200 transition-all font-bold text-2xl group">
+              <span className="group-hover:rotate-90 transition-transform">✕</span>
+            </button>
           </header>
-          <div className="flex-grow overflow-y-auto p-8 bg-stone-50/50">
+          
+          <div className="flex-grow overflow-y-auto p-12 bg-stone-50/50">
             {showAdminPortal === 'dashboard' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-8 rounded-[2rem] shadow-sm">
-                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">CA Jour (+ Livr.)</p>
-                  <p className="text-4xl font-serif font-bold text-stone-900">{formatPrice(stats.todayRevenue)} F</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-stone-100 group hover:shadow-xl transition-shadow">
+                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">CA Aujourd'hui</p>
+                  <p className="text-5xl font-serif font-bold text-stone-900">{formatPrice(stats.todayRevenue)} <span className="text-lg">F</span></p>
                 </div>
-                <div className="bg-stone-900 p-8 rounded-[2rem] shadow-xl text-white">
-                  <p className="text-[10px] font-black text-stone-500 uppercase tracking-widest">CA Total Période</p>
-                  <p className="text-4xl font-serif font-bold text-orange-500">{formatPrice(stats.periodRevenue)} F</p>
+                <div className="bg-stone-950 p-10 rounded-[3rem] shadow-2xl text-white group relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-orange-600/20 rounded-full blur-3xl"></div>
+                  <p className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-6">Volume Période</p>
+                  <p className="text-5xl font-serif font-bold text-orange-500">{formatPrice(stats.periodRevenue)} <span className="text-lg">F</span></p>
                 </div>
-                <div className="bg-white p-8 rounded-[2rem] shadow-sm">
-                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest">Commandes du jour</p>
-                  <p className="text-4xl font-serif font-bold text-stone-900">{stats.todayOrdersCount}</p>
+                <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-stone-100">
+                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">Flux Commandes</p>
+                  <p className="text-5xl font-serif font-bold text-stone-900">{stats.todayOrdersCount}</p>
+                </div>
+                <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-stone-100">
+                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">En attente (Encais.)</p>
+                  <p className="text-5xl font-serif font-bold text-orange-600">{formatPrice(stats.unpaidRevenue)} <span className="text-lg">F</span></p>
                 </div>
               </div>
             )}
             
             {showAdminPortal === 'orders' && (
-               <div className="space-y-4 max-w-5xl mx-auto">
-                 {orders.length === 0 ? <p className="text-center py-20 italic">Aucune commande.</p> : orders.map(order => (
-                   <div key={order.id} className="p-6 bg-white rounded-3xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm">
-                     <div>
-                       <div className="flex items-center gap-3">
-                         <h3 className="font-bold">{order.dishName} x{order.quantity}</h3>
-                         <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${order.status === 'Payé' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>{order.status}</span>
+               <div className="space-y-6 max-w-6xl mx-auto pb-20">
+                 {orders.length === 0 ? <div className="text-center py-32 bg-white rounded-[4rem] border border-dashed"><p className="italic text-stone-400">Aucun flux de commande pour le moment.</p></div> : orders.map(order => (
+                   <div key={order.id} className="p-8 bg-white rounded-[3rem] flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8 shadow-sm hover:shadow-xl transition-all border border-stone-100 group">
+                     <div className="space-y-3">
+                       <div className="flex items-center gap-4">
+                         <span className="w-12 h-12 bg-orange-50 text-orange-600 rounded-full flex items-center justify-center font-black text-lg">#{order.quantity}</span>
+                         <h3 className="font-bold text-2xl font-serif">{order.dishName}</h3>
+                         <span className={`text-[9px] font-black uppercase px-4 py-1.5 rounded-full border ${order.status === 'Payé' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>{order.status}</span>
                        </div>
-                       <p className="text-xs text-stone-400 mt-1">{order.customerName} • {order.customerPhone}</p>
-                       {order.isDelivery && <p className="text-[9px] font-bold text-orange-600 mt-1 uppercase tracking-widest">🚀 Livraison : {order.address}</p>}
-                     </div>
-                     <div className="flex gap-2 w-full md:w-auto">
-                       <button onClick={() => generateInvoicePDF(order)} className="flex-1 md:flex-none px-4 py-2 bg-stone-100 rounded-xl text-[10px] font-black hover:bg-stone-200">📄 FACTURE</button>
-                       {order.status === 'Nouveau' && <button onClick={() => updateOrderStatus(order.id, 'Payé')} className="flex-1 md:flex-none px-4 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black shadow-lg">PAYER</button>}
-                       <button onClick={() => deleteOrder(order.id)} className="w-10 h-10 flex items-center justify-center border border-red-50 text-red-300 hover:text-red-600 rounded-xl">✕</button>
-                     </div>
-                   </div>
-                 ))}
-               </div>
-            )}
-
-            {showAdminPortal === 'reservations' && (
-               <div className="space-y-4 max-w-5xl mx-auto">
-                 {reservations.length === 0 ? <p className="text-center py-20 italic">Aucune réservation enregistrée.</p> : reservations.map(res => (
-                   <div key={res.id} className="p-6 bg-white rounded-3xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm group">
-                     <div>
-                       <div className="flex items-center gap-3">
-                         <h3 className="font-bold text-lg">{res.name} — {res.guests}</h3>
-                         <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-full ${
-                           res.status === 'Confirmé' ? 'bg-green-100 text-green-700' : 
-                           res.status === 'En attente' ? 'bg-orange-100 text-orange-700' : 'bg-stone-100 text-stone-400'
-                         }`}>{res.status}</span>
+                       <div className="flex flex-wrap gap-4 text-sm text-stone-500">
+                         <span className="flex items-center gap-2">👤 {order.customerName}</span>
+                         <span className="flex items-center gap-2">📞 {order.customerPhone}</span>
+                         <span className="flex items-center gap-2 font-bold text-stone-900">💰 {formatPrice((order.price * order.quantity) + (order.isDelivery ? DELIVERY_FEE : 0))} F</span>
                        </div>
-                       <p className="text-xs text-orange-600 font-bold mt-1">
-                         📅 {new Date(res.date).toLocaleDateString()} • 📞 {res.phone}
-                       </p>
-                       {res.message && <p className="text-xs text-stone-400 italic mt-2">"{res.message}"</p>}
+                       {order.isDelivery && (
+                         <div className="bg-orange-50/50 p-4 rounded-2xl border border-orange-100">
+                           <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-1">🚀 Adresse de Livraison</p>
+                           <p className="text-xs text-stone-800 font-medium">{order.address}</p>
+                         </div>
+                       )}
                      </div>
-                     <div className="flex gap-2 w-full md:w-auto">
-                       {res.status === 'En attente' && (
-                         <button onClick={() => updateReservationStatus(res.id, 'Confirmé')} className="flex-1 md:flex-none px-4 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black shadow-lg">CONFIRMER</button>
+                     <div className="flex gap-3 w-full lg:w-auto">
+                       <button onClick={() => generateInvoicePDF(order)} className="flex-1 lg:flex-none px-8 py-4 bg-stone-100 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-stone-200 transition-colors">📄 Ticket</button>
+                       {order.status === 'Nouveau' && (
+                         <button onClick={() => updateOrderStatus(order.id, 'Payé')} className="flex-1 lg:flex-none px-8 py-4 bg-green-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-green-600/20 hover:bg-green-700 transition-all">Encaisser</button>
                        )}
-                       {res.status === 'Confirmé' && (
-                         <button onClick={() => updateReservationStatus(res.id, 'Terminé')} className="flex-1 md:flex-none px-4 py-2 bg-stone-900 text-white rounded-xl text-[10px] font-black">TERMINER</button>
-                       )}
-                       <button onClick={() => deleteReservation(res.id)} className="w-10 h-10 flex items-center justify-center border border-red-50 text-red-300 hover:text-red-600 rounded-xl transition-colors">✕</button>
+                       <button onClick={() => deleteOrder(order.id)} className="w-14 h-14 flex items-center justify-center border-2 border-red-50 text-red-200 hover:text-red-600 hover:border-red-100 rounded-2xl transition-all">✕</button>
                      </div>
                    </div>
                  ))}
@@ -517,54 +575,67 @@ const App: React.FC = () => {
             )}
 
             {showAdminPortal === 'accounting' && (
-              <div className="space-y-8 max-w-6xl mx-auto">
-                <div className="bg-white p-8 rounded-[2.5rem] flex flex-col md:flex-row gap-6 justify-between items-center border border-stone-100">
-                  <div className="flex gap-4">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-black text-stone-400 uppercase tracking-widest ml-1">Début</label>
-                      <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="p-3 border rounded-xl text-xs font-bold bg-stone-50" />
+              <div className="space-y-12 max-w-6xl mx-auto pb-20">
+                <div className="bg-white p-12 rounded-[4rem] flex flex-col lg:flex-row gap-10 justify-between items-center border border-stone-100 shadow-sm">
+                  <div className="flex flex-wrap gap-8">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Date de Début</label>
+                      <input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="p-4 border border-stone-200 rounded-2xl text-sm font-bold bg-stone-50 focus:ring-2 focus:ring-orange-500 outline-none" />
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-black text-stone-400 uppercase tracking-widest ml-1">Fin</label>
-                      <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="p-3 border rounded-xl text-xs font-bold bg-stone-50" />
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Date de Fin</label>
+                      <input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="p-4 border border-stone-200 rounded-2xl text-sm font-bold bg-stone-50 focus:ring-2 focus:ring-orange-500 outline-none" />
                     </div>
                   </div>
-                  <button onClick={generateReportPDF} className="w-full md:w-auto px-10 py-4 bg-stone-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-orange-600 transition-all">Exporter Bilan PDF</button>
+                  <button onClick={generateReportPDF} className="w-full lg:w-auto px-12 py-5 bg-stone-950 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-2xl hover:bg-orange-600 transition-all">Générer Rapport PDF</button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-stone-100">
-                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-4">Total Encaissé Période</p>
-                     <p className="text-4xl font-serif font-bold text-green-600">{formatPrice(stats.periodRevenue)} FCFA</p>
-                  </div>
-                  <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-stone-100">
-                     <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-4">CA en attente de paiement</p>
-                     <p className="text-4xl font-serif font-bold text-orange-600">{formatPrice(stats.unpaidRevenue)} FCFA</p>
-                  </div>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                   <div className="bg-white p-12 rounded-[4rem] shadow-sm border border-stone-100 relative overflow-hidden group hover:shadow-2xl transition-all">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-green-50 rounded-full blur-3xl -z-0"></div>
+                      <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6 relative z-10">Recettes Encaissées (Période)</p>
+                      <p className="text-6xl font-serif font-bold text-green-600 relative z-10">{formatPrice(stats.periodRevenue)} <span className="text-2xl">FCFA</span></p>
+                      <div className="mt-8 pt-8 border-t border-stone-100">
+                        <p className="text-xs text-stone-400 italic">Basé sur {filteredOrders.filter(o => o.status === 'Payé').length} transactions validées.</p>
+                      </div>
+                   </div>
+                   <div className="bg-white p-12 rounded-[4rem] shadow-sm border border-stone-100 group hover:shadow-2xl transition-all">
+                      <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">Commandes "Nouveau" (À Encaisser)</p>
+                      <p className="text-6xl font-serif font-bold text-orange-600">{formatPrice(stats.unpaidRevenue)} <span className="text-2xl">FCFA</span></p>
+                      <div className="mt-8 pt-8 border-t border-stone-100">
+                        <p className="text-xs text-stone-400 italic">Correspond à {filteredOrders.filter(o => o.status === 'Nouveau').length} commandes en attente.</p>
+                      </div>
+                   </div>
                 </div>
               </div>
             )}
 
             {showAdminPortal === 'menu_manager' && (
-              <div className="max-w-5xl mx-auto space-y-6">
-                 <div className="flex justify-between items-center mb-8">
-                   <h3 className="text-xl font-bold font-serif italic">Gestion des Produits</h3>
-                   <button onClick={() => setShowAddDishModal(true)} className="px-8 py-4 bg-orange-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">Ajouter un Plat</button>
+              <div className="max-w-6xl mx-auto space-y-10 pb-20">
+                 <div className="flex flex-col md:flex-row justify-between items-center gap-8 mb-12">
+                   <div className="space-y-2 text-center md:text-left">
+                     <h3 className="text-4xl font-serif font-bold italic">Gestionnaire de Produits</h3>
+                     <p className="text-stone-400 text-sm italic font-light">Personnalisez votre carte en temps réel.</p>
+                   </div>
+                   <button onClick={() => setShowAddDishModal(true)} className="px-12 py-5 bg-orange-600 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-xl hover:scale-105 transition-all">Ajouter une Création</button>
                  </div>
-                 <div className="grid gap-6">
+                 
+                 <div className="grid lg:grid-cols-2 gap-10">
                    {menuItems.map(dish => (
-                     <div key={dish.id} className="p-6 bg-white rounded-[2rem] flex flex-col md:flex-row gap-6 shadow-sm border border-stone-100 group">
-                        <img src={dish.image} className="w-full md:w-32 h-48 md:h-32 object-cover rounded-2xl group-hover:scale-105 transition-transform" alt={dish.name} />
-                        <div className="flex-grow flex flex-col justify-center">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h4 className="text-xl font-bold">{dish.name}</h4>
-                              <span className="text-[9px] font-black uppercase text-stone-400 tracking-widest">{dish.category}</span>
-                            </div>
-                            <p className="text-orange-600 font-serif font-bold text-lg">{formatPrice(dish.price)} F</p>
+                     <div key={dish.id} className="p-8 bg-white rounded-[3.5rem] flex flex-col sm:flex-row gap-10 shadow-sm border border-stone-100 group hover:shadow-2xl transition-all overflow-hidden relative">
+                        <div className="sm:w-48 sm:h-48 shrink-0 relative">
+                           <img src={formatImageUrl(dish.image)} className="w-full h-full object-cover rounded-[2.5rem] group-hover:scale-110 transition-transform duration-700" alt={dish.name} />
+                           <span className="absolute top-4 right-4 bg-orange-600 text-white text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-tighter shadow-lg">{dish.category}</span>
+                        </div>
+                        <div className="flex-grow flex flex-col justify-center py-2">
+                          <div className="flex justify-between items-start mb-4">
+                            <h4 className="text-2xl font-bold font-serif italic text-stone-900">{dish.name}</h4>
+                            <p className="text-orange-600 font-serif font-bold text-xl">{formatPrice(dish.price)} <span className="text-xs">F</span></p>
                           </div>
-                          <div className="flex gap-4 mt-6">
-                            <button onClick={() => setEditingDish(dish)} className="px-4 py-2 border rounded-xl text-[9px] font-black uppercase hover:bg-stone-50">Modifier</button>
-                            <button onClick={() => deleteDish(dish.id)} className="px-4 py-2 border border-red-50 text-red-300 hover:text-red-600 rounded-xl text-[9px] font-black uppercase">Supprimer</button>
+                          <p className="text-sm text-stone-400 italic line-clamp-2 mb-8 font-light leading-relaxed">{dish.description}</p>
+                          <div className="flex gap-4">
+                            <button onClick={() => setEditingDish(dish)} className="flex-1 py-3 bg-stone-50 border border-stone-200 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-stone-900 hover:text-white transition-all">Éditer</button>
+                            <button onClick={() => deleteDish(dish.id)} className="px-6 py-3 border-2 border-red-50 text-red-200 hover:text-red-600 hover:border-red-100 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all">✕</button>
                           </div>
                         </div>
                      </div>
@@ -578,16 +649,26 @@ const App: React.FC = () => {
 
       {/* LOGIN MODAL */}
       {showLoginModal && (
-        <div className="fixed inset-0 bg-stone-950/95 z-[500] flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="bg-white rounded-[3.5rem] p-12 max-w-sm w-full shadow-2xl relative overflow-hidden animate-in zoom-in duration-300">
-            <div className="absolute top-0 left-0 w-full h-2 bg-orange-600"></div>
-            <h2 className="text-3xl font-serif font-bold italic text-center mb-10 text-stone-900">Accès Gérant</h2>
+        <div className="fixed inset-0 bg-stone-950/98 z-[500] flex items-center justify-center p-6 backdrop-blur-xl">
+          <div className="bg-white rounded-[4rem] p-16 max-w-md w-full shadow-2xl relative overflow-hidden animate-in zoom-in duration-500 border border-stone-100">
+            <div className="absolute top-0 left-0 w-full h-3 bg-gradient-to-r from-orange-600 to-green-600"></div>
+            <div className="text-center mb-12">
+               <Logo className="w-16 h-16 mx-auto mb-6 text-stone-950" />
+               <h2 className="text-4xl font-serif font-bold italic text-stone-900 mb-2">Accès Privé</h2>
+               <p className="text-stone-400 text-[10px] font-black uppercase tracking-widest">RESTAURANT GRAND BASSAM</p>
+            </div>
             <form onSubmit={handleLogin} className="space-y-6">
-              <input type="text" placeholder="Admin" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-5 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-500 transition-all font-bold" />
-              <input type="password" placeholder="Mot de passe" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-5 bg-stone-50 rounded-2xl outline-none border border-stone-100 focus:border-orange-500 transition-all font-bold" />
-              {loginError && <p className="text-red-500 text-[10px] text-center font-bold uppercase tracking-widest">{loginError}</p>}
-              <button type="submit" className="w-full py-6 bg-stone-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-600 transition-all shadow-xl">Connexion</button>
-              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-stone-400 text-[10px] font-black uppercase mt-4 tracking-widest hover:text-stone-900">Retour au site</button>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Identifiant</label>
+                <input type="text" placeholder="Gérant" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-5 bg-stone-50 rounded-[2rem] outline-none border border-stone-100 focus:border-orange-500 transition-all font-bold text-stone-800" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Mot de passe</label>
+                <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-5 bg-stone-50 rounded-[2rem] outline-none border border-stone-100 focus:border-orange-500 transition-all font-bold text-stone-800" />
+              </div>
+              {loginError && <p className="text-red-600 text-[10px] text-center font-black uppercase tracking-widest bg-red-50 py-3 rounded-xl animate-pulse">{loginError}</p>}
+              <button type="submit" className="w-full py-6 bg-stone-950 text-white rounded-[2rem] font-black uppercase text-[11px] tracking-widest hover:bg-orange-600 transition-all shadow-2xl shadow-stone-950/20 active:scale-95">Authentification</button>
+              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-stone-400 text-[10px] font-black uppercase mt-6 tracking-widest hover:text-stone-900 transition-colors">Revenir au salon</button>
             </form>
           </div>
         </div>
@@ -595,59 +676,70 @@ const App: React.FC = () => {
 
       {/* DISH FORM MODAL */}
       {(showAddDishModal || editingDish) && (
-        <div className="fixed inset-0 bg-stone-950/95 z-[400] flex items-center justify-center p-4 overflow-y-auto backdrop-blur-md">
-          <div className="bg-white rounded-[3rem] p-10 max-w-2xl w-full shadow-2xl relative my-8">
-            <h3 className="text-3xl font-serif font-bold italic mb-8">{editingDish ? "Mise à jour du Plat" : "Nouvelle Création"}</h3>
-            <form onSubmit={saveDish} className="space-y-6">
-               <div className="grid md:grid-cols-2 gap-6">
-                 <div>
-                   <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Nom du Plat</label>
-                   <input type="text" required value={editingDish ? editingDish.name : newDish.name} onChange={e => editingDish ? setEditingDish({...editingDish, name: e.target.value}) : setNewDish({...newDish, name: e.target.value})} className="w-full p-4 bg-stone-50 rounded-2xl border border-stone-100 font-bold" />
+        <div className="fixed inset-0 bg-stone-950/98 z-[400] flex items-center justify-center p-6 overflow-y-auto backdrop-blur-xl">
+          <div className="bg-white rounded-[4rem] p-12 md:p-16 max-w-3xl w-full shadow-2xl relative my-12 border border-stone-100">
+            <div className="text-center mb-12">
+               <h3 className="text-5xl font-serif font-bold italic text-stone-900">{editingDish ? "Affinage du Plat" : "Nouvelle Signature"}</h3>
+               <p className="text-stone-400 text-[10px] font-black uppercase tracking-widest mt-4">Atelier de Création Culinaire</p>
+            </div>
+            
+            <form onSubmit={saveDish} className="space-y-8">
+               <div className="grid md:grid-cols-2 gap-8">
+                 <div className="space-y-2">
+                   <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Dénomination</label>
+                   <input type="text" required value={editingDish ? editingDish.name : newDish.name} onChange={e => editingDish ? setEditingDish({...editingDish, name: e.target.value}) : setNewDish({...newDish, name: e.target.value})} className="w-full p-5 bg-stone-50 rounded-[2rem] border border-stone-100 font-bold focus:border-orange-500 outline-none" placeholder="Ex: Garba Signature" />
                  </div>
-                 <div>
-                   <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Prix (FCFA)</label>
-                   <input type="number" required value={editingDish ? editingDish.price : newDish.price} onChange={e => editingDish ? setEditingDish({...editingDish, price: parseInt(e.target.value)}) : setNewDish({...newDish, price: parseInt(e.target.value)})} className="w-full p-4 bg-stone-50 rounded-2xl border border-stone-100 font-serif font-bold" />
+                 <div className="space-y-2">
+                   <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Tarif (FCFA)</label>
+                   <input type="number" required value={editingDish ? editingDish.price : newDish.price} onChange={e => editingDish ? setEditingDish({...editingDish, price: parseInt(e.target.value)}) : setNewDish({...newDish, price: parseInt(e.target.value)})} className="w-full p-5 bg-stone-50 rounded-[2rem] border border-stone-100 font-serif font-bold text-xl focus:border-orange-500 outline-none" placeholder="0" />
                  </div>
                </div>
-               <div>
-                 <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Catégorie</label>
-                 <select className="w-full p-4 bg-stone-50 rounded-2xl border border-stone-100 font-bold uppercase text-[10px] tracking-widest" value={editingDish ? editingDish.category : newDish.category} onChange={e => editingDish ? setEditingDish({...editingDish, category: e.target.value as any}) : setNewDish({...newDish, category: e.target.value as any})}>
-                    <option value="entrée">🥗 Entrée</option>
-                    <option value="plat">🍲 Plat Principal</option>
-                    <option value="dessert">🍰 Dessert</option>
-                    <option value="boisson">🥤 Boisson</option>
-                 </select>
+               
+               <div className="grid md:grid-cols-2 gap-8">
+                 <div className="space-y-2">
+                   <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Typologie</label>
+                   <select className="w-full p-5 bg-stone-50 rounded-[2rem] border border-stone-100 font-black uppercase text-[10px] tracking-widest focus:border-orange-500 outline-none appearance-none" value={editingDish ? editingDish.category : newDish.category} onChange={e => editingDish ? setEditingDish({...editingDish, category: e.target.value as any}) : setNewDish({...newDish, category: e.target.value as any})}>
+                      <option value="entrée">🥗 Entrée du Terroir</option>
+                      <option value="plat">🍲 Plat de Résistance</option>
+                      <option value="dessert">🍰 Douceur Finale</option>
+                      <option value="boisson">🥤 Rafraîchissement</option>
+                   </select>
+                 </div>
+                 <div className="space-y-2">
+                   <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Secrets du Chef (Description)</label>
+                   <input type="text" required value={editingDish ? editingDish.description : newDish.description} onChange={e => editingDish ? setEditingDish({...editingDish, description: e.target.value}) : setNewDish({...newDish, description: e.target.value})} className="w-full p-5 bg-stone-50 rounded-[2rem] border border-stone-100 text-sm font-light italic focus:border-orange-500 outline-none" placeholder="Description courte..." />
+                 </div>
                </div>
-               <div>
-                 <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Description</label>
-                 <textarea rows={3} required value={editingDish ? editingDish.description : newDish.description} onChange={e => editingDish ? setEditingDish({...editingDish, description: e.target.value}) : setNewDish({...newDish, description: e.target.value})} className="w-full p-4 bg-stone-50 rounded-2xl border border-stone-100 text-sm italic" placeholder="Secrets du chef..." />
-               </div>
-               <div className="p-6 bg-stone-50 rounded-3xl border-2 border-dashed border-stone-200">
-                  <div className="flex flex-col md:flex-row items-center gap-8">
-                    <div className="w-32 h-32 bg-white rounded-2xl overflow-hidden shadow-inner flex items-center justify-center text-stone-200 shrink-0">
-                       {(editingDish?.image || newDish.image) ? <img src={editingDish ? editingDish.image : newDish.image} className="w-full h-full object-cover" alt="Preview" /> : <span className="text-4xl">📸</span>}
+
+               <div className="p-10 bg-stone-50 rounded-[3rem] border-2 border-dashed border-stone-200">
+                  <div className="flex flex-col md:flex-row items-center gap-10">
+                    <div className="w-40 h-40 bg-white rounded-[2.5rem] overflow-hidden shadow-inner flex items-center justify-center text-stone-200 shrink-0 border border-stone-100 group">
+                       {(editingDish?.image || newDish.image) ? <img src={formatImageUrl(editingDish ? editingDish.image : newDish.image)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="Preview" /> : <span className="text-5xl">📸</span>}
                     </div>
-                    <div className="flex-grow space-y-4 w-full">
-                       <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Lien de l'image (URL)</label>
-                       <input 
-                        type="text" 
-                        placeholder="https://images.unsplash.com/..." 
-                        required 
-                        value={editingDish ? editingDish.image : newDish.image} 
-                        onChange={e => editingDish ? setEditingDish({...editingDish, image: e.target.value}) : setNewDish({...newDish, image: e.target.value})} 
-                        className="w-full p-4 bg-white rounded-2xl border border-stone-100 text-[10px] font-bold" 
-                       />
+                    <div className="flex-grow space-y-6 w-full">
+                       <div className="space-y-2">
+                         <label className="text-[10px] font-black text-stone-400 uppercase tracking-widest ml-1">Lien Visuel (URL Image)</label>
+                         <input 
+                          type="text" 
+                          placeholder="https://images.unsplash.com/..." 
+                          required 
+                          value={editingDish ? editingDish.image : newDish.image} 
+                          onChange={e => editingDish ? setEditingDish({...editingDish, image: e.target.value}) : setNewDish({...newDish, image: e.target.value})} 
+                          className="w-full p-5 bg-white rounded-[1.5rem] border border-stone-100 text-[10px] font-bold focus:border-orange-500 outline-none" 
+                         />
+                       </div>
                        {(editingDish?.image || newDish.image) && (
-                         <button type="button" onClick={analyzeImage} disabled={isAnalyzingImage} className="w-full md:w-auto bg-orange-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-orange-700 transition disabled:opacity-50">
-                           {isAnalyzingImage ? 'ANALYSE EN COURS...' : '✨ ANALYSE IA (VIA LIEN)'}
+                         <button type="button" onClick={analyzeImage} disabled={isAnalyzingImage} className="w-full bg-stone-950 text-white px-10 py-4 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-orange-600 transition disabled:opacity-50 flex items-center justify-center gap-4">
+                           {isAnalyzingImage ? <span className="animate-spin text-lg">⏳</span> : '✨'} {isAnalyzingImage ? 'Génération du contenu IA...' : 'Analyse IA Multimodale'}
                          </button>
                        )}
                     </div>
                   </div>
                </div>
-               <div className="flex gap-4 pt-4">
-                  <button type="submit" className="flex-grow bg-stone-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-orange-600 transition-all shadow-xl">Enregistrer</button>
-                  <button type="button" onClick={() => { setShowAddDishModal(false); setEditingDish(null); }} className="px-10 bg-stone-100 text-stone-400 py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-stone-200">Annuler</button>
+               
+               <div className="flex gap-6 pt-6">
+                  <button type="submit" className="flex-grow bg-orange-600 text-white py-6 rounded-[2rem] font-black uppercase text-[11px] tracking-widest hover:bg-orange-700 transition-all shadow-2xl shadow-orange-600/20 active:scale-95">Valider la Création</button>
+                  <button type="button" onClick={() => { setShowAddDishModal(false); setEditingDish(null); }} className="px-12 bg-stone-100 text-stone-400 py-6 rounded-[2rem] font-black uppercase text-[11px] tracking-widest hover:bg-stone-200 transition-all">Retour</button>
                </div>
             </form>
           </div>
