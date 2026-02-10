@@ -80,16 +80,21 @@ const App: React.FC = () => {
     const localMenuString = localStorage.getItem('grand_bassam_menu');
     let items: Dish[] = localMenuString ? JSON.parse(localMenuString) : INITIAL_MENU;
     
-    // Always sync image changes from INITIAL_MENU to local cache for hardcoded IDs
+    // Synchronisation forcée des données "source" (INITIAL_MENU) avec le cache local
+    // Cela permet de s'assurer que les changements de catégories ou d'images faits dans le code
+    // sont répercutés même si l'utilisateur a déjà des données en cache.
     if (localMenuString) {
       items = items.map(item => {
         const initialItem = INITIAL_MENU.find(i => i.id === item.id);
-        if (initialItem && initialItem.image !== item.image) {
-          return { ...item, image: initialItem.image };
+        if (initialItem) {
+          // On priorise les données du code pour les éléments existants (ID fixes)
+          return { ...item, ...initialItem };
         }
         return item;
       });
       localStorage.setItem('grand_bassam_menu', JSON.stringify(items));
+    } else {
+      localStorage.setItem('grand_bassam_menu', JSON.stringify(INITIAL_MENU));
     }
     
     setMenuItems(items);
@@ -327,6 +332,14 @@ const App: React.FC = () => {
     doc.save(`Bilan_${dateRange.start}_${dateRange.end}.pdf`);
   };
 
+  const categoryLabels: Record<string, string> = {
+    tous: 'Tout Voir',
+    entrée: 'Entrées',
+    plat: 'Plats de Résistance',
+    dessert: 'Desserts',
+    boisson: 'Boissons'
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-stone-50">
       {isAdminMode && (
@@ -404,21 +417,25 @@ const App: React.FC = () => {
             </div>
             
             <div className="flex justify-center gap-3 mb-20 flex-wrap px-6 max-w-5xl mx-auto">
-              {['tous', 'entrée', 'plat', 'dessert', 'boisson'].map(cat => (
+              {Object.entries(categoryLabels).map(([catKey, catLabel]) => (
                 <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`px-10 py-4 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-500 ${activeCategory === cat ? 'bg-orange-600 text-white shadow-[0_10px_30px_rgba(234,88,12,0.3)] scale-110' : 'bg-white text-stone-400 hover:text-stone-900 border border-stone-200 hover:border-stone-400 shadow-sm'}`}
+                  key={catKey}
+                  onClick={() => setActiveCategory(catKey)}
+                  className={`px-10 py-4 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-500 ${activeCategory === catKey ? 'bg-orange-600 text-white shadow-[0_10px_30px_rgba(234,88,12,0.3)] scale-110' : 'bg-white text-stone-400 hover:text-stone-900 border border-stone-200 hover:border-stone-400 shadow-sm'}`}
                 >
-                  {cat === 'tous' ? 'Tout Voir' : cat}
+                  {catLabel}
                 </button>
               ))}
             </div>
 
             <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-2 lg:grid-cols-3 gap-16">
-              {publicMenuItems.map((dish, index) => (
+              {publicMenuItems.length === 0 ? (
+                <div className="col-span-full text-center py-20">
+                  <p className="text-stone-400 italic">Aucun plat dans cette catégorie pour le moment.</p>
+                </div>
+              ) : publicMenuItems.map((dish, index) => (
                 <div key={dish.id} className="relative">
-                  {index === 0 && (
+                  {index === 0 && activeCategory === 'tous' && (
                     <div className="absolute -top-4 -left-4 z-10 bg-orange-600 text-white px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-widest shadow-xl rotate-[-5deg]">
                       ⭐ Le Plus Demandé
                     </div>
