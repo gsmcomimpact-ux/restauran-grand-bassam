@@ -2,10 +2,10 @@ import { Dish } from './types';
 
 export const RESTAURANT_NAME = "RESTAURANT GRAND BASSAM";
 export const TAGLINE = "L'Excellence de la Gastronomie Ivoirienne";
-export const LOCATION = "Kouara Kano, Niamey (Près de l'Ambassade de CI)";
+export const LOCATION = "Kouara Kano, derrière station ORIBA, face Nigelec centrale, Niamey";
 export const PHONE = "+22788770594"; 
 export const DISPLAY_PHONE = "+227 88 77 05 94"; 
-export const SITE_URL = "https://restaurant-grand-bassam.vercel.app/";
+export const SITE_URL = "https://restauran-grand-bassam.vercel.app/";
 export const DELIVERY_FEE = 1000;
 
 export const MENU_ITEMS: Dish[] = [
