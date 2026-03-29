@@ -5,10 +5,13 @@ import ReservationForm from './components/ReservationForm';
 import { MENU_ITEMS as INITIAL_MENU, PHONE, DISPLAY_PHONE, LOCATION, RESTAURANT_NAME, SITE_URL, DELIVERY_FEE } from './constants';
 import { Dish, OrderHistoryItem, Reservation } from './types';
 import { GoogleGenAI, Type } from "@google/genai";
+import { io } from "socket.io-client";
 // @ts-ignore
 import { jsPDF } from "https://esm.sh/jspdf@2.5.1";
 // @ts-ignore
 import autoTable from "https://esm.sh/jspdf-autotable@3.8.2";
+
+const socket = io();
 
 const formatPrice = (amount: number) => new Intl.NumberFormat('de-DE').format(amount);
 
@@ -77,58 +80,90 @@ const App: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Logique de synchronisation améliorée pour Vercel
+  // Logique de synchronisation améliorée avec le serveur
   useEffect(() => {
-    const localMenuString = localStorage.getItem('grand_bassam_menu');
-    let finalMenu: Dish[] = [];
-    
-    if (localMenuString) {
+    const fetchData = async () => {
       try {
-        const savedMenu: Dish[] = JSON.parse(localMenuString);
+        const [menuRes, ordersRes, resRes] = await Promise.all([
+          fetch('/api/menu'),
+          fetch('/api/orders'),
+          fetch('/api/reservations')
+        ]);
         
-        // 1. On commence par les éléments du code source (INITIAL_MENU)
-        // Cela garantit que les nouveaux plats et les corrections de catégories sont appliqués.
-        finalMenu = [...INITIAL_MENU];
+        const menuData = await menuRes.json();
+        const ordersData = await ordersRes.json();
+        const resData = await resRes.json();
+
+        if (menuData.length === 0) {
+          // Si le menu est vide sur le serveur, on l'initialise avec INITIAL_MENU
+          setMenuItems(INITIAL_MENU);
+          fetch('/api/menu', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(INITIAL_MENU)
+          });
+        } else {
+          setMenuItems(menuData);
+        }
         
-        // 2. On ajoute les plats personnalisés créés via l'admin qui ne sont pas dans INITIAL_MENU
-        const initialIds = new Set(INITIAL_MENU.map(i => i.id));
-        const customItems = savedMenu.filter(item => !initialIds.has(item.id));
-        
-        finalMenu = [...finalMenu, ...customItems];
-        
-        // On met à jour le stockage local avec la liste synchronisée
-        localStorage.setItem('grand_bassam_menu', JSON.stringify(finalMenu));
+        setOrders(ordersData);
+        setReservations(resData);
       } catch (e) {
-        finalMenu = INITIAL_MENU;
-        localStorage.setItem('grand_bassam_menu', JSON.stringify(INITIAL_MENU));
+        console.error("Erreur de chargement des données:", e);
+        setMenuItems(INITIAL_MENU);
       }
-    } else {
-      // Premier passage : on utilise simplement les données du code
-      finalMenu = INITIAL_MENU;
-      localStorage.setItem('grand_bassam_menu', JSON.stringify(INITIAL_MENU));
-    }
-    
-    setMenuItems(finalMenu);
+    };
+
+    fetchData();
+
     if (sessionStorage.getItem('is_admin') === 'true') {
       setIsAdminMode(true);
     }
-    refreshAdminData();
+
+    // WebSocket Listeners
+    socket.on("menu_updated", (updatedMenu) => setMenuItems(updatedMenu));
+    socket.on("new_order", (order) => setOrders(prev => [order, ...prev]));
+    socket.on("order_updated", ({ id, status }) => {
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    });
+    socket.on("order_deleted", (id) => {
+      setOrders(prev => prev.filter(o => o.id !== id));
+    });
+    socket.on("new_reservation", (res) => setReservations(prev => [res, ...prev]));
+    socket.on("reservation_updated", ({ id, status }) => {
+      setReservations(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+    });
+    socket.on("reservation_deleted", (id) => {
+      setReservations(prev => prev.filter(r => r.id !== id));
+    });
+
+    return () => {
+      socket.off("menu_updated");
+      socket.off("new_order");
+      socket.off("order_updated");
+      socket.off("order_deleted");
+      socket.off("new_reservation");
+      socket.off("reservation_updated");
+      socket.off("reservation_deleted");
+    };
   }, []);
 
-  const refreshAdminData = () => {
+  const refreshAdminData = async () => {
     try {
-      const fetchedOrders = JSON.parse(localStorage.getItem('grand_bassam_orders') || '[]');
-      setOrders(fetchedOrders);
-      const fetchedRes = JSON.parse(localStorage.getItem('grand_bassam_reservations') || '[]');
-      setReservations(fetchedRes);
+      const [ordersRes, resRes] = await Promise.all([
+        fetch('/api/orders'),
+        fetch('/api/reservations')
+      ]);
+      setOrders(await ordersRes.json());
+      setReservations(await resRes.json());
     } catch (e) {
-      console.error("Erreur de lecture des données locales");
+      console.error("Erreur de rafraîchissement des données");
     }
   };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'admin' && password === 'grandbassam227') {
+    if (username === 'admin' && password === 'bassam227') {
       setIsAdminMode(true);
       setShowLoginModal(false);
       sessionStorage.setItem('is_admin', 'true');
@@ -145,31 +180,55 @@ const App: React.FC = () => {
     sessionStorage.removeItem('is_admin');
   };
 
-  const updateOrderStatus = (id: string, status: 'Payé' | 'Nouveau') => {
-    const updated = orders.map(o => o.id === id ? { ...o, status } : o);
-    setOrders(updated);
-    localStorage.setItem('grand_bassam_orders', JSON.stringify(updated));
-  };
-
-  const deleteOrder = (id: string) => {
-    if (confirm("Supprimer cette commande ?")) {
-      const updated = orders.filter(o => o.id !== id);
-      setOrders(updated);
-      localStorage.setItem('grand_bassam_orders', JSON.stringify(updated));
+  const updateOrderStatus = async (id: string, status: 'Payé' | 'Nouveau') => {
+    try {
+      await fetch('/api/orders/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status })
+      });
+    } catch (e) {
+      console.error("Erreur de mise à jour de la commande");
     }
   };
 
-  const updateReservationStatus = (id: string, status: Reservation['status']) => {
-    const updated = reservations.map(r => r.id === id ? { ...r, status } : r);
-    setReservations(updated);
-    localStorage.setItem('grand_bassam_reservations', JSON.stringify(updated));
+  const deleteOrder = async (id: string) => {
+    if (confirm("Supprimer cette commande ?")) {
+      try {
+        await fetch('/api/orders/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+      } catch (e) {
+        console.error("Erreur de suppression de la commande");
+      }
+    }
   };
 
-  const deleteReservation = (id: string) => {
+  const updateReservationStatus = async (id: string, status: Reservation['status']) => {
+    try {
+      await fetch('/api/reservations/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status })
+      });
+    } catch (e) {
+      console.error("Erreur de mise à jour de la réservation");
+    }
+  };
+
+  const deleteReservation = async (id: string) => {
     if (confirm("Supprimer cette réservation ?")) {
-      const updated = reservations.filter(r => r.id !== id);
-      setReservations(updated);
-      localStorage.setItem('grand_bassam_reservations', JSON.stringify(updated));
+      try {
+        await fetch('/api/reservations/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+      } catch (e) {
+        console.error("Erreur de suppression de la réservation");
+      }
     }
   };
 
@@ -240,7 +299,7 @@ const App: React.FC = () => {
     }
   };
 
-  const saveDish = (e: React.FormEvent) => {
+  const saveDish = async (e: React.FormEvent) => {
     e.preventDefault();
     let updatedMenu: Dish[];
     if (editingDish) {
@@ -252,15 +311,62 @@ const App: React.FC = () => {
       setNewDish({ name: '', description: '', price: 0, category: 'plat', image: '' });
       setShowAddDishModal(false);
     }
+    
     setMenuItems(updatedMenu);
-    localStorage.setItem('grand_bassam_menu', JSON.stringify(updatedMenu));
+    try {
+      await fetch('/api/menu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedMenu)
+      });
+    } catch (e) {
+      console.error("Erreur de sauvegarde du menu");
+    }
   };
 
-  const deleteDish = (id: string) => {
+  const deleteDish = async (id: string) => {
     if (confirm("Retirer ce plat ?")) {
-      const updated = menuItems.filter(m => m.id !== id);
-      setMenuItems(updated);
-      localStorage.setItem('grand_bassam_menu', JSON.stringify(updated));
+      const updatedMenu = menuItems.filter(m => m.id !== id);
+      setMenuItems(updatedMenu);
+      try {
+        await fetch('/api/menu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedMenu)
+        });
+      } catch (e) {
+        console.error("Erreur de suppression du plat");
+      }
+    }
+  };
+
+  const clearMenu = async () => {
+    if (confirm("Voulez-vous vraiment vider tout le menu ? Cette action est irréversible.")) {
+      setMenuItems([]);
+      try {
+        await fetch('/api/menu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify([])
+        });
+      } catch (e) {
+        console.error("Erreur lors du vidage du menu");
+      }
+    }
+  };
+
+  const resetMenu = async () => {
+    if (confirm("Voulez-vous réinitialiser le menu avec les plats par défaut ?")) {
+      setMenuItems(INITIAL_MENU);
+      try {
+        await fetch('/api/menu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(INITIAL_MENU)
+        });
+      } catch (e) {
+        console.error("Erreur lors de la réinitialisation du menu");
+      }
     }
   };
 
@@ -533,40 +639,67 @@ const App: React.FC = () => {
       {/* ADMIN PORTAL OVERLAYS */}
       {isAdminMode && showAdminPortal !== 'none' && (
         <div className="fixed inset-0 bg-stone-50 z-[300] flex flex-col no-print">
-          <header className="p-8 border-b flex justify-between items-center bg-white shadow-xl relative z-10">
+          <header className="p-6 md:p-8 border-b flex flex-col md:flex-row justify-between items-center bg-white shadow-xl relative z-10 gap-6">
             <div className="flex items-center gap-6">
               <Logo className="w-12 h-12 text-orange-600" />
-              <h2 className="text-3xl font-serif font-bold italic uppercase tracking-tight">{
-                showAdminPortal === 'dashboard' ? 'Tableau de Bord' :
-                showAdminPortal === 'orders' ? 'Suivi des Commandes' :
-                showAdminPortal === 'reservations' ? 'Gestion Réservations' :
-                showAdminPortal === 'accounting' ? 'Bilan d\'Activité' : 'Édition de la Carte'
-              }</h2>
+              <div className="flex flex-col">
+                <h2 className="text-2xl md:text-3xl font-serif font-bold italic uppercase tracking-tight">{
+                  showAdminPortal === 'dashboard' ? 'Tableau de Bord' :
+                  showAdminPortal === 'orders' ? 'Suivi des Commandes' :
+                  showAdminPortal === 'reservations' ? 'Gestion Réservations' :
+                  showAdminPortal === 'accounting' ? 'Bilan d\'Activité' : 'Édition de la Carte'
+                }</h2>
+                <div className="flex gap-4 mt-2 overflow-x-auto no-scrollbar pb-1">
+                  <button onClick={() => setShowAdminPortal('dashboard')} className={`text-[9px] font-black uppercase tracking-widest shrink-0 px-3 py-1 rounded-full transition-all ${showAdminPortal === 'dashboard' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}>Stats</button>
+                  <button onClick={() => setShowAdminPortal('orders')} className={`text-[9px] font-black uppercase tracking-widest shrink-0 px-3 py-1 rounded-full transition-all ${showAdminPortal === 'orders' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}>Commandes</button>
+                  <button onClick={() => setShowAdminPortal('reservations')} className={`text-[9px] font-black uppercase tracking-widest shrink-0 px-3 py-1 rounded-full transition-all ${showAdminPortal === 'reservations' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}>Réservations</button>
+                  <button onClick={() => setShowAdminPortal('accounting')} className={`text-[9px] font-black uppercase tracking-widest shrink-0 px-3 py-1 rounded-full transition-all ${showAdminPortal === 'accounting' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}>Compta</button>
+                  <button onClick={() => setShowAdminPortal('menu_manager')} className={`text-[9px] font-black uppercase tracking-widest shrink-0 px-3 py-1 rounded-full transition-all ${showAdminPortal === 'menu_manager' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-400 hover:bg-stone-200'}`}>Menu</button>
+                </div>
+              </div>
             </div>
-            <button onClick={() => setShowAdminPortal('none')} className="w-14 h-14 flex items-center justify-center border-2 border-stone-100 rounded-2xl hover:bg-stone-100 hover:border-stone-200 transition-all font-bold text-2xl group">
-              <span className="group-hover:rotate-90 transition-transform">✕</span>
-            </button>
+            <div className="flex items-center gap-4">
+              <button onClick={logoutAdmin} className="text-[9px] font-black border border-stone-200 px-4 py-2 rounded-xl hover:bg-stone-900 hover:text-white transition-all uppercase tracking-widest">Déconnexion</button>
+              <button onClick={() => setShowAdminPortal('none')} className="w-12 h-12 flex items-center justify-center border-2 border-stone-100 rounded-2xl hover:bg-stone-100 hover:border-stone-200 transition-all font-bold text-xl group">
+                <span className="group-hover:rotate-90 transition-transform">✕</span>
+              </button>
+            </div>
           </header>
           
           <div className="flex-grow overflow-y-auto p-12 bg-stone-50/50">
             {showAdminPortal === 'dashboard' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-stone-100 group hover:shadow-xl transition-shadow">
-                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">CA Aujourd'hui</p>
-                  <p className="text-5xl font-serif font-bold text-stone-900">{formatPrice(stats.todayRevenue)} <span className="text-lg">F</span></p>
+              <div className="space-y-12">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                  <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-stone-100 group hover:shadow-xl transition-shadow">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">CA Aujourd'hui</p>
+                    <p className="text-5xl font-serif font-bold text-stone-900">{formatPrice(stats.todayRevenue)} <span className="text-lg">F</span></p>
+                  </div>
+                  <div className="bg-stone-950 p-10 rounded-[3rem] shadow-2xl text-white group relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-orange-600/20 rounded-full blur-3xl"></div>
+                    <p className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-6">Volume Période</p>
+                    <p className="text-5xl font-serif font-bold text-orange-500">{formatPrice(stats.periodRevenue)} <span className="text-lg">F</span></p>
+                  </div>
+                  <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-stone-100">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">Flux Commandes</p>
+                    <p className="text-5xl font-serif font-bold text-stone-900">{stats.todayOrdersCount}</p>
+                  </div>
+                  <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-stone-100">
+                    <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">En attente (Encais.)</p>
+                    <p className="text-5xl font-serif font-bold text-orange-600">{formatPrice(stats.unpaidRevenue)} <span className="text-lg">F</span></p>
+                  </div>
                 </div>
-                <div className="bg-stone-950 p-10 rounded-[3rem] shadow-2xl text-white group relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-orange-600/20 rounded-full blur-3xl"></div>
-                  <p className="text-[10px] font-black text-stone-500 uppercase tracking-widest mb-6">Volume Période</p>
-                  <p className="text-5xl font-serif font-bold text-orange-500">{formatPrice(stats.periodRevenue)} <span className="text-lg">F</span></p>
-                </div>
-                <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-stone-100">
-                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">Flux Commandes</p>
-                  <p className="text-5xl font-serif font-bold text-stone-900">{stats.todayOrdersCount}</p>
-                </div>
-                <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-stone-100">
-                  <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-6">En attente (Encais.)</p>
-                  <p className="text-5xl font-serif font-bold text-orange-600">{formatPrice(stats.unpaidRevenue)} <span className="text-lg">F</span></p>
+
+                <div className="bg-white p-12 rounded-[4rem] border border-stone-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8">
+                  <div className="space-y-2 text-center md:text-left">
+                    <h4 className="text-2xl font-serif font-bold italic">Accès Rapide au Catalogue</h4>
+                    <p className="text-stone-400 text-sm font-light italic">Mettez à jour vos plats, prix et descriptions en un instant.</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowAdminPortal('menu_manager')}
+                    className="px-12 py-5 bg-orange-600 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-xl hover:scale-105 transition-all"
+                  >
+                    Gérer le Menu
+                  </button>
                 </div>
               </div>
             )}
@@ -648,7 +781,11 @@ const App: React.FC = () => {
                      <h3 className="text-4xl font-serif font-bold italic">Gestionnaire de Produits</h3>
                      <p className="text-stone-400 text-sm italic font-light">Personnalisez votre carte en temps réel.</p>
                    </div>
-                   <button onClick={() => setShowAddDishModal(true)} className="px-12 py-5 bg-orange-600 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-xl hover:scale-105 transition-all">Ajouter une Création</button>
+                   <div className="flex flex-wrap gap-4 justify-center">
+                     <button onClick={resetMenu} className="px-6 py-4 border border-stone-200 text-stone-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-stone-100 transition-all">Réinitialiser</button>
+                     <button onClick={clearMenu} className="px-6 py-4 border border-red-100 text-red-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all">Vider le Menu</button>
+                     <button onClick={() => setShowAddDishModal(true)} className="px-12 py-5 bg-orange-600 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-widest shadow-xl hover:scale-105 transition-all">Ajouter une Création</button>
+                   </div>
                  </div>
                  
                  <div className="grid lg:grid-cols-2 gap-10">

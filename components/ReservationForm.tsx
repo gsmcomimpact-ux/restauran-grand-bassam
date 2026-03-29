@@ -24,8 +24,11 @@ const ReservationForm: React.FC = () => {
       timestamp: new Date().toISOString()
     };
 
-    const existingReservations = JSON.parse(localStorage.getItem('grand_bassam_reservations') || '[]');
-    localStorage.setItem('grand_bassam_reservations', JSON.stringify([newReservation, ...existingReservations]));
+    fetch('/api/reservations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newReservation)
+    }).catch(e => console.error("Erreur d'envoi de la réservation au serveur"));
 
     let waMessage = `*RÉSERVATION - RESTAURANT GRAND B*\n\n`;
     waMessage += `*Nom :* ${formData.name}\n`;

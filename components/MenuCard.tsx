@@ -41,8 +41,11 @@ const MenuCard: React.FC<MenuCardProps> = ({ dish }) => {
       status: 'Nouveau'
     };
 
-    const existingOrders = JSON.parse(localStorage.getItem('grand_bassam_orders') || '[]');
-    localStorage.setItem('grand_bassam_orders', JSON.stringify([newOrder, ...existingOrders]));
+    fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newOrder)
+    }).catch(e => console.error("Erreur d'envoi de la commande au serveur"));
 
     let message = `*NOUVELLE COMMANDE - RESTAURANT GRAND B*\n\n`;
     message += `*Client :* ${customerInfo.name}\n`;
